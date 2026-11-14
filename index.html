@@ -188,6 +188,15 @@ body.dgn{user-select:none}
 .col.cl{flex:0 0 140px}
 .col.cl .gh{flex-wrap:wrap}
 .vboard{padding:0 4px}
+.crumb{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:2px 8px 10px;font-size:15px;color:var(--mute)}
+.crumb button{padding:6px 11px;border-radius:8px;background:var(--s1);color:var(--ink);border:1px solid var(--line)}
+.crumb button.on{border-color:var(--pink);color:var(--pink)}
+.crumb .sep{opacity:.6}
+.crumb .md{color:var(--pink);background:none}
+.crumb .md{margin-left:auto}
+.crumb .md~.md{margin-left:0}
+.cb.dr{margin-left:auto}
+.cb.dr+.cb{margin-left:0}
 .vg{background:var(--s1);border-radius:10px;padding:4px 8px 8px;margin-bottom:10px}
 .vg .gh{margin:8px 2px 4px}
 .vg .row{background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
@@ -323,6 +332,41 @@ function descend(ids){
   while(ch){ch=false;S.projects.forEach(p=>{if(p.parent&&out.has(p.parent)&&!out.has(p.id)){out.add(p.id);ch=true}})}
   return out;
 }
+// ----- Dự án lớn / nhỏ: xem dạng "đi sâu" -----
+function pkids(id){return S.projects.filter(p=>(p.parent||null)===(id||null))}
+function projPath(id){const a=[];let p=P(id),n=0;while(p&&n++<20){a.unshift(p);p=p.parent?P(p.parent):null}return a}
+function pfocus(v){return v.pf&&P(v.pf)?v.pf:null}
+// cột của board Dự án đang là 'tag' (dự án đang mở không có dự án con, hoặc bấm đổi sang Tag)
+function projTagMode(v){const f=pfocus(v);return !!f&&(v.pmode==='tag'||!pkids(f).length)}
+function colGroup(v){
+  const g=v.group==='none'?'status':v.group;
+  return (g==='project'&&v.mode==='board'&&projTagMode(v))?'tag':g;
+}
+function projCols(v,ts){
+  const f=pfocus(v),ks=pkids(f);
+  const inSet=f?descend([f]):null;
+  const base=inSet?ts.filter(t=>t.projects.some(x=>inSet.has(x))):ts;
+  if(projTagMode(v)){
+    let cols=groupsOf(Object.assign({},v,{group:'tag'}),base);
+    if(!v.ptall)cols=cols.filter(c=>c.items.length);
+    return cols;
+  }
+  const cols=ks.map(p=>{const s=descend([p.id]);return {key:p.id,label:p.name,items:sortTasks(base.filter(t=>t.projects.some(x=>s.has(x))))}});
+  if(f){
+    const all=new Set();ks.forEach(p=>descend([p.id]).forEach(x=>all.add(x)));
+    const items=sortTasks(base.filter(t=>!t.projects.some(x=>all.has(x))));
+    if(items.length)cols.push({key:'',label:'Chưa chia vào dự án nhỏ',items});
+  }
+  return cols;
+}
+function crumbHtml(v){
+  const f=pfocus(v),path=f?projPath(f):[],tag=projTagMode(v),hasKids=f&&pkids(f).length;
+  let h='<div class="crumb"><button data-pf=""'+(f?'':' class="on"')+'>📁 Tất cả</button>';
+  path.forEach((p,i)=>{h+='<span class="sep">›</span><button data-pf="'+p.id+'"'+(i===path.length-1?' class="on"':'')+'>'+esc(p.name)+'</button>'});
+  if(hasKids)h+='<button class="md" data-pmode="1">Cột: '+(tag?'Tag':'Dự án nhỏ')+' ⇄</button>';
+  if(tag)h+='<button class="md'+(hasKids?'':' alone')+'" data-ptall="1">'+(v.ptall?'Chỉ tag đang dùng':'Hiện cả tag trống')+'</button>';
+  return h+'</div>'+(f&&!hasKids?'<div class="small" style="padding:0 10px 8px">Dự án này không có dự án nhỏ nên các cột là Tag của nó.</div>':'');
+}
 function projProg(pid){
   const set=descend([pid]);
   const ts=S.tasks.filter(t=>t.projects.some(x=>set.has(x)));
@@ -399,7 +443,7 @@ function groupsOf(v,ts){
 }
 function setGroupValue(t,g,k){
   if(g==='status'){if(k==='late')return;t.status=k;if(k==='done')markDone(t,true)}
-  else if(g==='project')t.projects=[k];
+  else if(g==='project')t.projects=[k||pfocus(curView())||'p0'];
   else if(g==='tag')t.tags=k?[k]:[];
   else if(g==='pri')t.pri=k;
   else if(g==='moc')t.moc=k;
@@ -505,6 +549,7 @@ function ghHtml(g,v,pb,o){
   return '<div class="gh">'+(o.dg?'<span class="dg" data-dg="1">⋮⋮</span>':'')
    +(isP?'<span data-proj="'+g.key+'" style="cursor:pointer;color:var(--ink)">'+esc(g.label)+' ›</span>':'<span>'+esc(g.label)+'</span>')
    +' <span class="n">'+g.items.length+'</span>'+(pb||'')
+   +(isP&&o.drill?'<button class="cb dr" data-pf="'+g.key+'" title="Mở dự án này">⤵</button>':'')
    +(o.coll!==undefined?'<button class="cb" data-coll="'+esc(g.key)+'">'+(o.coll?'▸':'▾')+'</button>':'')+'</div>'
    +(isP&&!o.coll?projNotesHtml(g.key):'');
 }
@@ -515,18 +560,20 @@ function listHtml(v,ts){
 }
 const DRAGABLE=(g,k)=>g!=='day'&&g!=='none'&&k!==''&&k!=null;
 function boardHtml(v,ts){
-  const g=v.group==='none'?'status':v.group,o=v.orient||'h',coll=v.coll||[];
-  const gs=groupsOf(Object.assign({},v,{group:g}),ts);
+  const g=colGroup(v),o=v.orient||'h',coll=v.coll||[];
+  const isProj=v.group==='project';
+  const gs=isProj?projCols(v,ts):groupsOf(Object.assign({},v,{group:g}),ts);
   const cards=c=>c.items.map(t=>rowHtml(t,{mv:true,noProj:g==='project'})).join('');
   const pbar=c=>{if(g==='project'&&c.key){const p=projProg(c.key);if(p.n)return '<div class="pbar"><i style="width:'+Math.round(p.d/p.n*100)+'%"></i></div><span class="n">'+p.d+'/'+p.n+'</span>'}return ''};
   const body=gs.map(c=>{
     const cl=coll.includes(c.key);
-    const head=ghHtml(c,{group:g},pbar(c),{dg:DRAGABLE(g,c.key),coll:cl});
+    const head=ghHtml(c,{group:g},pbar(c),{dg:DRAGABLE(g,c.key),coll:cl,drill:g==='project'});
     const inner=cl?'':(o==='vr'?'<div class="swb">'+(cards(c)||'<div class="small" style="padding:8px">Trống</div>')+'</div>':cards(c));
     const cls=o==='h'?'col':o==='vs'?'vg':'vg sw';
     return '<div class="'+cls+(cl?' cl':'')+'" data-gk="'+esc(c.key)+'">'+head+inner+'</div>';
   }).join('');
-  return (o==='h'?'<div class="board" data-dragc="x">':'<div class="vboard" data-dragc="y">')+body+'</div>'+NEWROW;
+  const empty=isProj&&!gs.length?'<div class="empty">Dự án này chưa có việc nào</div>':'';
+  return (isProj?crumbHtml(v):'')+(o==='h'?'<div class="board" data-dragc="x">':'<div class="vboard" data-dragc="y">')+body+'</div>'+empty+NEWROW;
 }
 const ORIENTS=[['h','Cột ngang (cuộn trái–phải)'],['vs','Dọc: các nhóm xếp chồng'],['vr','Dọc: mỗi nhóm một hàng ngang']];
 const groupList=()=>GROUPS.concat(S.props.filter(p=>p.type==='select').map(p=>['cp:'+p.id,p.name]));
@@ -755,10 +802,10 @@ function propSheet(){
   openSheet('<div class="pgtop"><button data-a="close">‹ Huỷ</button><span></span></div><div class="ttlw"><div class="ttl" style="font-size:26px;font-weight:700">Thêm cột</div></div><input type="text" data-i="pname" placeholder="Tên cột (vd: Khách hàng)"><div class="f">Kiểu</div><select data-i="ptype"><option value="text">Chữ</option><option value="number">Số</option><option value="check">Tick</option><option value="select">Chọn 1 trong nhiều</option></select><input type="text" data-i="popts" placeholder="Nếu là Chọn 1: các lựa chọn, cách nhau dấu phẩy" style="margin-top:8px"><div class="ba"><button class="btn" data-a="psave">Thêm cột</button></div>');
 }
 function mvSheet(id){
-  const v=curView(),g=v.group==='none'?'status':v.group,t=T(id);
+  const v=curView(),g=colGroup(v),t=T(id);
   let ks;
   if(g==='status')ks=['idea','doing','done'].map(x=>[x,STAT[x]]);
-  else if(g==='project')ks=projOpts();
+  else if(g==='project'){const f=pfocus(v);ks=pkids(f).map(p=>[p.id,p.name]);if(f)ks.push([f,'Chưa chia vào dự án nhỏ']);if(!ks.length)ks=projOpts()}
   else if(g==='tag')ks=S.tags.map(x=>[x,x]);
   else if(g==='pri')ks=priOrder().map(x=>[x,PRI[x]]);
   else if(g==='moc')ks=S.mocs.map(x=>[x,x]);
@@ -784,7 +831,7 @@ function quickSheet(){
 }
 function newTask(o){
   const v=curView();
-  const t=Object.assign({id:uid(),name:'',icon:'',note:'',url:'',projects:[(v.f.proj[0])||'p0'],tags:v.f.tag.slice(0,1),pri:'now',status:'idea',star:false,due:null,work:v.f.scope==='today'?presetDate('today'):null,moc:'',start:'',end:'',est:0,repeat:'',parent:null,links:[],custom:{}},o);
+  const t=Object.assign({id:uid(),name:'',icon:'',note:'',url:'',projects:[((v.mode==='board'&&v.group==='project'&&pfocus(v))||v.f.proj[0])||'p0'],tags:v.f.tag.slice(0,1),pri:'now',status:'idea',star:false,due:null,work:v.f.scope==='today'?presetDate('today'):null,moc:'',start:'',end:'',est:0,repeat:'',parent:null,links:[],custom:{}},o);
   if(o.proj)t.projects=[o.proj];delete t.proj;
   S.tasks.push(t);return t;
 }
@@ -978,6 +1025,7 @@ function onInput(e){
   if(el.dataset.n&&s&&s.type==='proj'){const n=pnotes(P(s.id)).find(x=>x.id===el.dataset.n);if(n){n.text=el.value;save()}return}
   if(i==='pname2'&&s&&s.type==='proj'){P(s.id).name=el.value;save();return}
   if(!i)return;
+  if(e.type==='change'&&(i==='newsub'||i==='newtag'||i==='newmoc2')){addFromInput(el);return}
   if(t){
     if(i==='name')t.name=el.value;else if(i==='icon')t.icon=el.value;else if(i==='note')t.note=el.value;else if(i==='url')t.url=el.value;
     save();return;
@@ -990,8 +1038,14 @@ function onInput(e){
 }
 function onKey(e){
   if(e.key!=='Enter')return;
-  const el=e.target,i=el.dataset&&el.dataset.i,v=(el.value||'').trim();
-  if(!i||!v||el.tagName==='TEXTAREA')return;
+  if(e.target.tagName==='TEXTAREA')return;
+  addFromInput(e.target);
+}
+function addFromInput(el){
+  const i=el.dataset&&el.dataset.i,v=(el.value||'').trim();
+  if(!i||!v)return;
+  if(i!=='newsub'&&i!=='newtag'&&i!=='newmoc2')return;
+  el.value='';
   const s=sh,t=s&&s.type==='task'?T(s.id):null;
   if(i==='newsub'&&t){newTask({name:v,parent:t.id,projects:t.projects.slice(),tags:t.tags.slice(),work:t.work,moc:t.moc});save();taskSheet(t.id,true);setTimeout(()=>{const n=document.querySelector('[data-i=newsub]');if(n)n.focus()},50)}
   else if(i==='newtag'){if(!S.tags.includes(v))S.tags.push(v);save();settingsSheet(true)}
@@ -1022,6 +1076,10 @@ document.addEventListener('click',e=>{
   }
   const a=g('[data-a]');
   if(a){e.preventDefault();return act(a.dataset.a,a.dataset.v)}
+  const pf=g('[data-pf]');
+  if(pf){const v=curView();v.pf=pf.dataset.pf||null;v.pmode='auto';v.ptall=false;save();render();const m=$('#main');if(m)m.scrollTop=0;return}
+  if(g('[data-pmode]')){const v=curView();v.pmode=projTagMode(v)?'auto':'tag';save();return render()}
+  if(g('[data-ptall]')){const v=curView();v.ptall=!v.ptall;save();return render()}
   const cb=g('[data-coll]');
   if(cb){const v=curView();v.coll=v.coll||[];tog(v.coll,cb.dataset.coll);save();return render()}
   const ck=g('[data-ck]');
@@ -1110,7 +1168,7 @@ function endColDrag(){
   cancelAnimationFrame(DG.raf);
   const keys=[...DG.cont.children].map(k=>k.dataset&&k.dataset.gk).filter(k=>k);
   DG.col.classList.remove('dragging');
-  const v=curView(),g=v.group==='none'?'status':v.group;
+  const v=curView(),g=colGroup(v);
   DG=null;applyOrder(g,keys);save();swallowClick();render();
 }
 function tabMove(){
@@ -1195,11 +1253,15 @@ function cdEnd(){
   CD=null;swallowClick();
   if(!hot)return;
   const key=hot.dataset.gk;if(key===src)return;
-  const v=curView(),g=v.group==='none'?'status':v.group,t=T(id);if(!t)return;
-  if(g==='project'||g==='tag'){
-    const f=g==='project'?'projects':'tags';
-    t[f]=t[f].filter(x=>x!==src);
-    if(key&&!t[f].includes(key))t[f].push(key);
+  const v=curView(),g=colGroup(v),t=T(id);if(!t)return;
+  if(g==='project'){
+    const pc=pfocus(v),rm=src?descend([src]):new Set(pc?[pc]:[]),nk=key||pc;
+    t.projects=t.projects.filter(x=>!rm.has(x));
+    if(nk&&!t.projects.includes(nk))t.projects.push(nk);
+    if(!t.projects.length)t.projects=['p0'];
+  }else if(g==='tag'){
+    t.tags=t.tags.filter(x=>x!==src);
+    if(key&&!t.tags.includes(key))t.tags.push(key);
   }else setGroupValue(t,g,key);
   save();render();
 }
