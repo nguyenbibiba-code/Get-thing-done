@@ -1,6 +1,6 @@
 {
  "name": "Get Thing Done",
- "short_name": "GTD",
+ "short_name": "NOW",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
@@ -20,6 +20,68 @@
    "sizes": "512x512",
    "type": "image/png",
    "purpose": "any maskable"
+  }
+ ],
+ "shortcuts": [
+  {
+   "name": "Thêm việc",
+   "short_name": "Thêm việc",
+   "url": "./?go=add",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192",
+     "type": "image/png"
+    }
+   ]
+  },
+  {
+   "name": "Hôm nay",
+   "short_name": "Hôm nay",
+   "url": "./?go=today",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192",
+     "type": "image/png"
+    }
+   ]
+  },
+  {
+   "name": "Tuần này",
+   "short_name": "Tuần này",
+   "url": "./?go=week",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192",
+     "type": "image/png"
+    }
+   ]
+  },
+  {
+   "name": "Lịch",
+   "short_name": "Lịch",
+   "url": "./?go=cal",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192",
+     "type": "image/png"
+    }
+   ]
+  },
+  {
+   "name": "Dự án",
+   "short_name": "Dự án",
+   "url": "./?go=proj",
+   "icons": [
+    {
+     "src": "icon-192.png",
+     "sizes": "192x192",
+     "type": "image/png"
+    }
+   ]
   }
  ]
 }

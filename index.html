@@ -410,6 +410,11 @@ function delTask(id){
   S.tasks=S.tasks.filter(t=>t.id!==id);
   S.tasks.forEach(t=>{t.links=t.links.filter(x=>x!==id)});
 }
+
+// ----- Nút quay về (chỉ bật ở bản cài offline) -----
+let NAV=false;const layers=[];
+function pushLayer(n){if(!NAV||layers.includes(n))return;layers.push(n);try{history.pushState({gtd:layers.length},'')}catch(e){}}
+function topLayer(){return layers[layers.length-1]}
 // ----- Hiển thị -----
 let calSel=null,calMonth=null;
 const MODES=[['list','Danh sách'],['board','Board'],['table','Bảng'],['calendar','Lịch'],['matrix','Ma trận Eisenhower']];
@@ -518,9 +523,11 @@ function tickCountdown(){
 }
 // ----- Trang (sheet) và popup chọn -----
 let sh=null,popState=null,showAll=false;
-function openSheet(html,keep){const s=$('#sheet');const st=keep?s.scrollTop:0;s.innerHTML=html;$('#ov').classList.add('on');s.scrollTop=st}
-function closeSheet(){
+function openSheet(html,keep){const s=$('#sheet');const st=keep?s.scrollTop:0;s.innerHTML=html;$('#ov').classList.add('on');s.scrollTop=st;pushLayer('sheet')}
+function closeSheet(){if(NAV&&topLayer()==='sheet')history.back();else doCloseSheet()}
+function doCloseSheet(){
   if(sh&&sh.type==='task'){const t=T(sh.id);if(t&&!t.name.trim()&&!kids(t.id).length&&!t.note)delTask(t.id)}
+  {const i=layers.lastIndexOf('sheet');if(i>=0)layers.splice(i,1)}
   $('#ov').classList.remove('on');sh=null;showAll=false;save();render();
 }
 function refreshSheet(){
@@ -531,8 +538,10 @@ function refreshSheet(){
   else if(sh.type==='proj')projSheet(sh.id,true);
   else render();
 }
-function openPop(html){$('#pop .pbox').innerHTML=html;$('#pop').classList.add('on')}
-function popClose(){$('#pop').classList.remove('on');popState=null;save();refreshSheet();if(!sh)render()}
+function openPop(html){$('#pop .pbox').innerHTML=html;$('#pop').classList.add('on');pushLayer('pop')}
+function popClose(){if(NAV&&topLayer()==='pop')history.back();else doClosePop()}
+function doClosePop(){{const i=layers.lastIndexOf('pop');if(i>=0)layers.splice(i,1)}
+  $('#pop').classList.remove('on');popState=null;save();refreshSheet();if(!sh)render()}
 const addInput=ph=>'<input type="text" class="pin" data-pi="add" placeholder="'+esc(ph)+'">';
 
 function pickSingle(title,opts,cur,cb,o){
@@ -743,7 +752,7 @@ function pickTask(skip){
   return pool.length?pool[Math.floor(Math.random()*pool.length)]:null;
 }
 function focusShow(t){
-  clearInterval(fT);fRun=false;fId=t?t.id:null;
+  pushLayer('focus');clearInterval(fT);fRun=false;fId=t?t.id:null;
   const f=$('#focus');f.classList.add('on');
   if(!t){f.innerHTML='<div class="nm">Không còn việc nào</div><button class="btn" data-f="exit">Đóng</button>';return}
   fLeft=(t.est&&t.est<=60?t.est:25)*60;
@@ -751,7 +760,18 @@ function focusShow(t){
   focusTime();
 }
 function focusTime(){const e=$('#ft');if(e)e.textContent=pad(Math.floor(fLeft/60))+':'+pad(fLeft%60)}
-function focusClose(){clearInterval(fT);$('#focus').classList.remove('on');render()}
+function focusClose(){if(NAV&&topLayer()==='focus')history.back();else doFocusClose()}
+function doFocusClose(){{const i=layers.lastIndexOf('focus');if(i>=0)layers.splice(i,1)}
+  clearInterval(fT);$('#focus').classList.remove('on');render()}
+
+function enterReorder(){reorder=true;pushLayer('reorder');renderBar()}
+function layerClose(t){
+  if(t==='pop')doClosePop();
+  else if(t==='sheet')doCloseSheet();
+  else if(t==='focus')doFocusClose();
+  else if(t==='reorder'){reorder=false;renderBar()}
+  else if(t==='tab'){S.active=S.views[0].id;save();render()}
+}
 // ----- Lịch timetable (tuần / ngày / tháng) -----
 const HH=52,HW=72;
 const tmin=s=>{const a=s.split(':');return (+a[0])*60+(+a[1]||0)};
@@ -883,7 +903,7 @@ function act(a,v){
   const s=sh,t=s&&s.type==='task'?T(s.id):null,vw=s&&s.type==='view'?S.views.find(x=>x.id===s.id):null;
   switch(a){
     case 'close':return closeSheet();
-    case 'reorder':closeSheet();reorder=true;return renderBar();
+    case 'reorder':closeSheet();setTimeout(enterReorder,200);return;
     case 'nadd':{const p=P(s.id),x=val('newnote').trim();if(x)pnotes(p).unshift({id:uid(),text:x,pin:false});save();return projSheet(s.id,true)}
     case 'npin':{const n=pnotes(P(s.id)).find(x=>x.id===v);n.pin=!n.pin;save();return projSheet(s.id,true)}
     case 'ndel':{const p=P(s.id);p.notes=pnotes(p).filter(x=>x.id!==v);save();return projSheet(s.id,true)}
@@ -960,7 +980,7 @@ document.addEventListener('click',e=>{
   if(ck){const t=T(ck.dataset.ck);markDone(t,t.status!=='done');save();return refreshSheet()}
   const tl=g('[data-tl]'),tr=g('[data-tr]');
   if(tl||tr){const id=(tl||tr).dataset[tl?'tl':'tr'],i=S.views.findIndex(x=>x.id===id),j=tl?i-1:i+1;if(j>=0&&j<S.views.length){const a=S.views[i];S.views[i]=S.views[j];S.views[j]=a}save();return renderBar()}
-  if(g('[data-rdone]')){reorder=false;save();return renderBar()}
+  if(g('[data-rdone]')){save();if(NAV&&topLayer()==='reorder')history.back();else{reorder=false;renderBar()}return}
   const mv=g('[data-mv]');
   if(mv)return mvSheet(mv.dataset.mv);
   const pk=g('[data-pk]');
@@ -987,7 +1007,7 @@ document.addEventListener('click',e=>{
   if(gd){calSel=gd.dataset.goday;calCfg(curView()).type='day';save();return render()}
   if(g('[data-new]')){const t=newTask({});save();return taskSheet(t.id)}
   const tab=g('#bar [data-v]');
-  if(tab){S.active=tab.dataset.v;save();return render()}
+  if(tab){const id=tab.dataset.v;S.active=id;save();if(id!==S.views[0].id)pushLayer('tab');else if(NAV&&topLayer()==='tab')return history.back();return render()}
   if(g('[data-newv]')){
     const v={id:uid(),name:'Giao diện mới',icon:'',mode:'board',group:'status',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false}};
     S.views.push(v);S.active=v.id;save();render();return viewSheet(v.id);
@@ -1002,7 +1022,7 @@ document.addEventListener('click',e=>{
   if(g('#pick'))return focusShow(pickTask());
 });
 const bar=$('#bar');
-bar.addEventListener('pointerdown',e=>{if(reorder||!e.target.closest('[data-v]'))return;lpFired=false;clearTimeout(lpT);lpT=setTimeout(()=>{lpFired=true;reorder=true;renderBar();if(navigator.vibrate)try{navigator.vibrate(20)}catch(x){}},550)});
+bar.addEventListener('pointerdown',e=>{if(reorder||!e.target.closest('[data-v]'))return;lpFired=false;clearTimeout(lpT);lpT=setTimeout(()=>{lpFired=true;enterReorder();if(navigator.vibrate)try{navigator.vibrate(20)}catch(x){}},550)});
 ['pointerup','pointercancel','pointerleave'].forEach(ev=>bar.addEventListener(ev,()=>{clearTimeout(lpT);setTimeout(()=>{lpFired=false},350)}));
 bar.addEventListener('contextmenu',e=>e.preventDefault());
 $('#sheet').addEventListener('change',onInput);
@@ -1015,11 +1035,16 @@ $('#pop').addEventListener('keydown',e=>{
 setTimeout(()=>{const s=document.getElementById('splash');if(s){s.style.opacity=0;setTimeout(()=>s.remove(),450)}},1100);
 load().then(()=>{
   render();
+  try{const go=new URLSearchParams(location.search).get('go'),m={today:'v1',week:'v2',cal:'v3',proj:'v4'};
+    if(go==='add')quickSheet();
+    else if(m[go]&&S.views.find(v=>v.id===m[go])){S.active=m[go];render();if(m[go]!==S.views[0].id)pushLayer('tab')}}catch(x){}
   setInterval(tickCountdown,30000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!sh)render()});
 });
 // ----- Bản offline: sao lưu, lưu bền, service worker -----
 (function(){
+  NAV=true;try{history.replaceState({gtd:0},'')}catch(e){}
+  window.addEventListener('popstate',function(e){const n=(e.state&&e.state.gtd)||0;while(layers.length>n){layerClose(layers.pop())}});
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
   if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('./sw.js').catch(function(){})})}
   const f=document.createElement('input');f.type='file';f.accept='.json,application/json';f.style.display='none';document.body.appendChild(f);
