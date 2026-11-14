@@ -177,6 +177,22 @@ input,select,textarea{font-size:16px}
 #splash .sn{font-size:30px;font-weight:800;letter-spacing:-.02em}
 #splash .ss{font-size:14px;color:var(--mute)}
 .lg{flex:0 0 26px;margin-right:8px}
+
+.dg{touch-action:none;cursor:grab;color:var(--mute);padding:6px 8px 6px 0;user-select:none;-webkit-user-select:none;font-size:16px;letter-spacing:-2px}
+.dragging{opacity:.65;outline:1.5px dashed var(--pink);border-radius:10px}
+.tab.dragging{background:var(--pinkd);outline-offset:-2px}
+body.dgn{user-select:none}
+.cb{margin-left:auto;color:var(--mute);padding:2px 8px}
+.col.cl{flex:0 0 140px}
+.col.cl .gh{flex-wrap:wrap}
+.vboard{padding:0 4px}
+.vg{background:var(--s1);border-radius:10px;padding:4px 8px 8px;margin-bottom:10px}
+.vg .gh{margin:8px 2px 4px}
+.vg .row{background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
+.vg.cl{padding-bottom:2px}
+.swb{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.swb .row{flex:0 0 240px;margin-bottom:0}
+.vg.sw .pn{display:none}
 </style>
 </head>
 <body>
@@ -353,10 +369,11 @@ function groupsOf(v,ts){
   if(g==='none')return [{key:'',label:'',items:sortTasks(ts)}];
   let keys=[];
   const add=(k,l)=>keys.push({key:k,label:l,items:[]});
-  if(g==='status'){['idea','doing','late','done'].forEach(k=>add(k,STAT[k]))}
+  if(g==='status'){statOrder().forEach(k=>add(k,STAT[k]))}
   else if(g==='project'){const set=v.f.proj.length?descend(v.f.proj):null;S.projects.forEach(p=>{if(!set||set.has(p.id))add(p.id,(p.parent?'↳ ':'')+p.name)})}
   else if(g==='tag'){S.tags.forEach(k=>add(k,k));add('','Chưa gắn tag')}
-  else if(g==='pri'){PRI_ORDER.forEach(k=>add(k,PRI[k]))}
+  else if(g==='pri'){priOrder().forEach(k=>add(k,PRI[k]))}
+  else if(g.indexOf('cp:')===0){const p=S.props.find(x=>x.id===g.slice(3));if(p){p.opts.forEach(o=>add(o,o));add('','Chưa chọn')}}
   else if(g==='moc'){S.mocs.forEach(k=>add(k,k));add('','Chưa chọn mốc')}
   else if(g==='day'){
     const td=todayISO(),we=endOfWeek(td);
@@ -370,12 +387,13 @@ function groupsOf(v,ts){
     else if(g==='project')ks=t.projects;
     else if(g==='tag')ks=t.tags.length?t.tags:[''];
     else if(g==='pri')ks=[t.pri];
+    else if(g.indexOf('cp:')===0)ks=[t.custom[g.slice(3)]||''];
     else if(g==='moc')ks=[t.moc||''];
     else if(g==='day'){const td=todayISO();ks=[eff(t)==='late'?'late':!t.work?'none':t.work.iso>=td?t.work.iso:'late']}
     ks.forEach(k=>{const o=keys.find(x=>x.key===k);if(o)o.items.push(t)});
   });
   keys.forEach(k=>k.items=sortTasks(k.items));
-  return keys.filter(k=>k.items.length||g==='status'||g==='project'||(g==='moc'&&k.key));
+  return keys.filter(k=>k.items.length||g==='status'||g==='project'||(g==='moc'&&k.key)||(v.mode==='board'&&g!=='day'&&k.key));
 }
 function setGroupValue(t,g,k){
   if(g==='status'){if(k==='late')return;t.status=k;if(k==='done')markDone(t,true)}
@@ -383,6 +401,7 @@ function setGroupValue(t,g,k){
   else if(g==='tag')t.tags=k?[k]:[];
   else if(g==='pri')t.pri=k;
   else if(g==='moc')t.moc=k;
+  else if(g.indexOf('cp:')===0)t.custom[g.slice(3)]=k;
   else if(g==='day'){if(k==='none')t.work=null;else if(k!=='late')t.work={iso:k,label:fmtD(k)}}
 }
 function markDone(t,on){
@@ -415,6 +434,19 @@ function delTask(id){
 let NAV=false;const layers=[];
 function pushLayer(n){if(!NAV||layers.includes(n))return;layers.push(n);try{history.pushState({gtd:layers.length},'')}catch(e){}}
 function topLayer(){return layers[layers.length-1]}
+
+// ----- Thứ tự cột / lựa chọn (kéo thả) -----
+const priOrder=()=>S.priOrder&&S.priOrder.length===4?S.priOrder:PRI_ORDER;
+const statOrder=()=>S.statOrder&&S.statOrder.length===4?S.statOrder:['idea','doing','late','done'];
+function applyOrder(g,keys){
+  const sub=(arr,idf,ks)=>{const set=new Set(ks),idx=[],map=new Map();arr.forEach((x,i)=>{map.set(idf(x),x);if(set.has(idf(x)))idx.push(i)});const items=ks.filter(k=>map.has(k)).map(k=>map.get(k));idx.forEach((pos,n)=>{arr[pos]=items[n]})};
+  if(g==='project')sub(S.projects,p=>p.id,keys);
+  else if(g==='tag')sub(S.tags,x=>x,keys);
+  else if(g==='moc')sub(S.mocs,x=>x,keys);
+  else if(g==='pri'){const a=priOrder().slice();sub(a,x=>x,keys);S.priOrder=a}
+  else if(g==='status'){const a=statOrder().slice();sub(a,x=>x,keys);S.statOrder=a}
+  else if(g.indexOf('cp:')===0){const p=S.props.find(x=>x.id===g.slice(3));if(p)sub(p.opts,x=>x,keys)}
+}
 // ----- Hiển thị -----
 let calSel=null,calMonth=null;
 const MODES=[['list','Danh sách'],['board','Board'],['table','Bảng'],['calendar','Lịch'],['matrix','Ma trận Eisenhower']];
@@ -446,12 +478,7 @@ function rowHtml(t,opt){
    +'<div class="mt">'+(opt.noProj?'':prs.map(p=>'<span>'+esc(p.name)+'</span>').join(' · ')+(prs.length?'<span>·</span>':''))+metaHtml(t)+'</div></div>'
    +(opt.mv?'<button class="mv" data-mv="'+t.id+'" title="Chuyển cột">⇄</button>':'')+'</div>';
 }
-let reorder=false;
 function renderBar(){
-  if(reorder){
-    $('#bar').innerHTML=S.views.map((v,i)=>'<span class="tab on rt"><button data-tl="'+v.id+'"'+(i===0?' disabled':'')+'>◀</button>'+esc(v.name)+'<button data-tr="'+v.id+'"'+(i===S.views.length-1?' disabled':'')+'>▶</button></span>').join('')+'<button class="tab" data-rdone="1" style="color:var(--pink);font-weight:700">Xong</button>';
-    return;
-  }
   $('#bar').innerHTML=S.views.map(v=>'<button class="tab'+(v.id===S.active?' on':'')+'" data-v="'+v.id+'">'+esc(v.name)+'</button>').join('')
    +'<button class="tab" data-newv="1">＋ Giao diện</button>';
 }
@@ -470,24 +497,37 @@ function render(){
   else if(v.mode==='board')m.innerHTML=boardHtml(v,ts);
   else m.innerHTML=listHtml(v,ts);
 }
-function ghHtml(g,v,pb){
+function ghHtml(g,v,pb,o){
+  o=o||{};
   const isP=v.group==='project'&&g.key;
-  return '<div class="gh">'+(isP?'<span data-proj="'+g.key+'" style="cursor:pointer;color:var(--ink)">'+esc(g.label)+' ›</span>':esc(g.label))+' <span class="n">'+g.items.length+'</span>'+(pb||'')+'</div>'+(isP?projNotesHtml(g.key):'');
+  return '<div class="gh">'+(o.dg?'<span class="dg" data-dg="1">⋮⋮</span>':'')
+   +(isP?'<span data-proj="'+g.key+'" style="cursor:pointer;color:var(--ink)">'+esc(g.label)+' ›</span>':'<span>'+esc(g.label)+'</span>')
+   +' <span class="n">'+g.items.length+'</span>'+(pb||'')
+   +(o.coll!==undefined?'<button class="cb" data-coll="'+esc(g.key)+'">'+(o.coll?'▸':'▾')+'</button>':'')+'</div>'
+   +(isP&&!o.coll?projNotesHtml(g.key):'');
 }
 const NEWROW='<button class="newrow" data-new="1">＋ Mới</button>';
 function listHtml(v,ts){
   if(!ts.length)return '<div class="empty">Chưa có việc nào ở đây</div>'+NEWROW;
   return groupsOf(v,ts).map(g=>(g.label?ghHtml(g,v):'')+g.items.map(t=>rowHtml(t,{noProj:v.group==='project'})).join('')).join('')+NEWROW;
 }
+const DRAGABLE=(g,k)=>g!=='day'&&g!=='none'&&k!==''&&k!=null;
 function boardHtml(v,ts){
-  const g=v.group==='none'?'status':v.group;
+  const g=v.group==='none'?'status':v.group,o=v.orient||'h',coll=v.coll||[];
   const gs=groupsOf(Object.assign({},v,{group:g}),ts);
-  return '<div class="board">'+gs.map(c=>{
-    let pb='';
-    if(g==='project'&&c.key){const p=projProg(c.key);if(p.n)pb='<div class="pbar"><i style="width:'+Math.round(p.d/p.n*100)+'%"></i></div><span class="n">'+p.d+'/'+p.n+'</span>'}
-    return '<div class="col">'+ghHtml(c,{group:g},pb)+c.items.map(t=>rowHtml(t,{mv:true,noProj:g==='project'})).join('')+'</div>';
-  }).join('')+'</div>'+NEWROW;
+  const cards=c=>c.items.map(t=>rowHtml(t,{mv:true,noProj:g==='project'})).join('');
+  const pbar=c=>{if(g==='project'&&c.key){const p=projProg(c.key);if(p.n)return '<div class="pbar"><i style="width:'+Math.round(p.d/p.n*100)+'%"></i></div><span class="n">'+p.d+'/'+p.n+'</span>'}return ''};
+  const body=gs.map(c=>{
+    const cl=coll.includes(c.key);
+    const head=ghHtml(c,{group:g},pbar(c),{dg:DRAGABLE(g,c.key),coll:cl});
+    const inner=cl?'':(o==='vr'?'<div class="swb">'+(cards(c)||'<div class="small" style="padding:8px">Trống</div>')+'</div>':cards(c));
+    const cls=o==='h'?'col':o==='vs'?'vg':'vg sw';
+    return '<div class="'+cls+(cl?' cl':'')+'" data-gk="'+esc(c.key)+'">'+head+inner+'</div>';
+  }).join('');
+  return (o==='h'?'<div class="board" data-dragc="x">':'<div class="vboard" data-dragc="y">')+body+'</div>'+NEWROW;
 }
+const ORIENTS=[['h','Cột ngang (cuộn trái–phải)'],['vs','Dọc: các nhóm xếp chồng'],['vr','Dọc: mỗi nhóm một hàng ngang']];
+const groupList=()=>GROUPS.concat(S.props.filter(p=>p.type==='select').map(p=>['cp:'+p.id,p.name]));
 const TCOLS=[['status','Trạng thái'],['proj','Dự án'],['work','Ngày làm'],['due','Hạn chót'],['tag','Tag'],['pri','Ưu tiên'],['moc','Mốc làm'],['est','Ước tính'],['prog','Tiến độ']];
 function cellHtml(t,k){
   if(k==='status'){const e=eff(t);return '<span class="pill '+e+'">'+STAT[e]+'</span>'}
@@ -582,7 +622,7 @@ function openPicker(id,key){
   if(key==='status')return pickSingle('Trạng thái',[['idea','Ý tưởng'],['doing','Đang làm'],['done','Xong']],t.status,v=>{if(v==='done')markDone(t,true);else{t.status=v;delete t.doneAt}});
   if(key==='proj')return pickMulti('Dự án (chọn được nhiều)',projOpts(),t.projects,a=>{t.projects=a.length?a:['p0']});
   if(key==='tag')return pickMulti('Tag',S.tags.map(x=>[x,x]),t.tags,a=>{t.tags=a},{add:'+ tag mới rồi Enter',addFn:v=>{if(!S.tags.includes(v))S.tags.push(v)}});
-  if(key==='pri')return pickSingle('Mức ưu tiên',PRI_ORDER.map(x=>[x,PRI[x]]),t.pri,v=>{t.pri=v});
+  if(key==='pri')return pickSingle('Mức ưu tiên',priOrder().map(x=>[x,PRI[x]]),t.pri,v=>{t.pri=v});
   if(key==='moc')return pickSingle('Mốc thời điểm làm',S.mocs.map(x=>[x,x]),t.moc,v=>{t.moc=v},{clear:'Bỏ mốc',add:'+ mốc mới (vd: Sau cà phê) rồi Enter',addFn:v=>{if(!S.mocs.includes(v))S.mocs.push(v);t.moc=v}});
   if(key==='rep')return pickSingle('Lặp lại',[['','Không lặp'],['daily','Hằng ngày'],['weekly','Hằng tuần'],['monthly','Hằng tháng']],t.repeat,v=>{t.repeat=v});
   if(key==='work')return pickDate('Ngày làm',t.work,d=>{t.work=d});
@@ -648,6 +688,7 @@ function taskSheet(id,keep){
     else h+='<div class="pr" data-pk="cp:'+p.id+'"><div class="pl">'+esc(p.name)+'</div><div class="pv">'+(p.type==='check'?(v?'☑':'☐'):v?'<span class="pill">'+esc(v)+'</span>':'<span class="ph">Trống</span>')+'</div></div>';
   });
   h+='<div class="pr"><div class="pl">Link</div><div class="pv"><input type="text" data-i="url" value="'+esc(t.url)+'" placeholder="Dán link vào đây">'+(t.url?'<a href="'+esc(t.url)+'" target="_blank" rel="noopener">Mở ↗</a>':'')+'</div></div>';
+  if(typeof OFFLINE!=='undefined'&&OFFLINE&&(t.work||t.due))h+='<button class="more" data-a="ics">⏰ Nhắc bằng Lịch của điện thoại (tạo file .ics)</button>';
   if(hidden)h+='<button class="more" data-a="more">＋ Thêm thuộc tính ('+hidden+')</button>';
   else if(showAll)h+='<button class="more" data-a="more">− Ẩn bớt</button>';
   const subs=kids(t.id);
@@ -669,7 +710,8 @@ function viewSheet(id,keep){
   const row=(k,l,html)=>'<div class="pr" data-vk="'+k+'"><div class="pl">'+l+'</div><div class="pv">'+html+'</div></div>';
   let h='<div class="pgtop"><button data-a="close">‹ Xong</button><span></span></div><div class="ttlw"><input class="ico" data-i="vicon" value="'+esc(v.icon)+'" placeholder="＋"><input class="ttl" data-i="vname" value="'+esc(v.name)+'"></div>'
    +row('mode','Chế độ xem','<span class="pill">'+nm(MODES,v.mode)+'</span>')
-   +row('group','Gom nhóm theo','<span class="pill">'+nm(GROUPS,v.group)+'</span>')
+   +row('group','Gom nhóm theo','<span class="pill">'+nm(groupList(),v.group)+'</span>')
+   +(v.mode==='board'?row('orient','Hướng board','<span class="pill">'+nm(ORIENTS,v.orient||'h')+'</span>'):'')
    +row('scope','Hiện việc','<span class="pill">'+nm(SCOPES,v.f.scope)+'</span>')
    +row('proj','Chỉ dự án',pill(v.f.proj.map(i=>(P(i)||{}).name||'')))
    +row('tag','Chỉ tag',pill(v.f.tag))
@@ -682,7 +724,8 @@ function viewSheet(id,keep){
 function viewPicker(id,k){
   const v=S.views.find(x=>x.id===id);if(!v)return;
   if(k==='mode')return pickSingle('Chế độ xem',MODES,v.mode,x=>{v.mode=x;if(x==='board'&&v.group==='none')v.group='status'});
-  if(k==='group')return pickSingle('Gom nhóm / cột theo',GROUPS,v.group,x=>{v.group=x});
+  if(k==='group')return pickSingle('Gom nhóm / cột theo',groupList(),v.group,x=>{v.group=x});
+  if(k==='orient')return pickSingle('Hướng board',ORIENTS,v.orient||'h',x=>{v.orient=x});
   if(k==='scope')return pickSingle('Hiện việc',SCOPES,v.f.scope,x=>{v.f.scope=x});
   if(k==='proj')return pickMulti('Chỉ các dự án (bỏ trống = tất cả)',projOpts(),v.f.proj,a=>{v.f.proj=a});
   if(k==='tag')return pickMulti('Chỉ các tag',S.tags.map(x=>[x,x]),v.f.tag,a=>{v.f.tag=a});
@@ -691,7 +734,7 @@ function viewPicker(id,k){
   if(k==='link'){v.f.link=!v.f.link;save();return refreshSheet()}
 }
 function settingsSheet(keep){
-  sh={type:'set'};
+  sh={type:'set'};S.noti=S.noti||{on:false,start:true,due:true,late:true,sent:{}};
   const sw=(k,l)=>'<div class="sw"><span>'+l+'</span><button class="chip'+(S.auto[k]?' on':'')+'" data-a="auto" data-v="'+k+'">'+(S.auto[k]?'Bật':'Tắt')+'</button></div>';
   let h='<div class="pgtop"><button data-a="close">‹ Đóng</button><span></span></div><div class="ttlw"><div class="ttl" style="font-size:26px;font-weight:700">Cài đặt</div></div><div class="sec">Tự động hoá</div>'
    +sw('delay','Qua ngày làm mà chưa xong → "Đang trì hoãn"')+sw('parentDone','Xong hết việc con → việc mẹ tự Xong')+sw('doingToday','Đến ngày làm → tự "Đang làm"')
@@ -700,7 +743,8 @@ function settingsSheet(keep){
    +'<hr><div class="sec">Tag</div><div class="chips">'+S.tags.map(x=>'<span class="chip">'+esc(x)+' <a href="#" data-a="tdel" data-v="'+esc(x)+'">✕</a></span>').join('')+'</div><input type="text" data-i="newtag" placeholder="＋ tag mới (Enter)" style="margin-top:8px">'
    +'<hr><div class="sec">Mốc thời điểm</div><div class="chips">'+S.mocs.map(x=>'<span class="chip">'+esc(x)+' <a href="#" data-a="mdel" data-v="'+esc(x)+'">✕</a></span>').join('')+'</div><input type="text" data-i="newmoc2" placeholder="＋ mốc mới (Enter)" style="margin-top:8px">'
    +'<hr><div class="sec">Cột tuỳ ý</div><div class="chips">'+S.props.map(p=>'<span class="chip">'+esc(p.name)+' <a href="#" data-a="prdel" data-v="'+p.id+'">✕</a></span>').join('')+'</div><button class="btn g" style="margin-top:8px" data-a="propnew">＋ Thêm cột</button>'
-   +'<hr><div class="sec">Menu dưới cùng</div><button class="btn g" data-a="reorder">Sắp xếp thứ tự giao diện</button><div class="small" style="margin-top:6px">Mẹo: nhấn giữ một tab ở thanh dưới cũng vào được chế độ này. Bấm tên dự án ở trên để mở ghi chú ghim của dự án.</div>'+'<hr><div class="sec">Sao lưu dữ liệu</div><div class="two"><button class="btn g" data-a="export">Xuất file sao lưu</button><button class="btn g" data-a="import">Nhập từ file</button></div><div class="small" style="margin-top:6px">Dữ liệu chỉ nằm trong máy này. Hãy xuất file sao lưu thỉnh thoảng (lưu vào Drive, email…) để không mất khi đổi máy hoặc xoá dữ liệu trình duyệt.</div>'
+   +'<hr><div class="sec">Menu dưới cùng</div><div class="small">Nhấn giữ một tab ở thanh dưới khoảng nửa giây rồi kéo trái/phải để đổi thứ tự. Trong board, kéo biểu tượng ⋮⋮ ở tiêu đề cột (hoặc nhấn giữ tiêu đề) để đổi thứ tự cột. Bấm tên dự án để mở ghi chú ghim.</div>'+'<hr><div class="sec">Sao lưu dữ liệu</div><div class="two"><button class="btn g" data-a="export">Xuất file sao lưu</button><button class="btn g" data-a="import">Nhập từ file</button></div><div class="small" style="margin-top:6px">Dữ liệu chỉ nằm trong máy này. Hãy xuất file sao lưu thỉnh thoảng (lưu vào Drive, email…) để không mất khi đổi máy hoặc xoá dữ liệu trình duyệt.</div>'
+   +'<hr><div class="sec">Thông báo</div><div class="sw"><span>Bật thông báo</span><button class="chip'+(S.noti.on?' on':'')+'" data-a="noton">'+(S.noti.on?'Bật':'Tắt')+'</button></div><div class="sw"><span>Nhắc sắp đến giờ bắt đầu việc (trước 10 phút)</span><button class="chip'+(S.noti.start?' on':'')+'" data-a="notopt" data-v="start">'+(S.noti.start?'Bật':'Tắt')+'</button></div><div class="sw"><span>Nhắc hạn chót (trước 1 ngày và 1 giờ)</span><button class="chip'+(S.noti.due?' on':'')+'" data-a="notopt" data-v="due">'+(S.noti.due?'Bật':'Tắt')+'</button></div><div class="sw"><span>Nhắc buổi sáng về việc cần dời lịch</span><button class="chip'+(S.noti.late?' on':'')+'" data-a="notopt" data-v="late">'+(S.noti.late?'Bật':'Tắt')+'</button></div><div class="small">Thông báo chỉ hoạt động khi app đang mở hoặc vừa được dùng. Muốn nhắc chắc chắn khi đã đóng app, hãy dùng nút "Nhắc bằng Lịch của điện thoại" trong từng việc.</div>'
    +'<hr><button class="btn r" data-a="reset">Xoá sạch & bắt đầu lại</button>';
   openSheet(h,keep);
 }
@@ -714,8 +758,9 @@ function mvSheet(id){
   if(g==='status')ks=['idea','doing','done'].map(x=>[x,STAT[x]]);
   else if(g==='project')ks=projOpts();
   else if(g==='tag')ks=S.tags.map(x=>[x,x]);
-  else if(g==='pri')ks=PRI_ORDER.map(x=>[x,PRI[x]]);
+  else if(g==='pri')ks=priOrder().map(x=>[x,PRI[x]]);
   else if(g==='moc')ks=S.mocs.map(x=>[x,x]);
+  else if(g.indexOf('cp:')===0){const p=S.props.find(x=>x.id===g.slice(3));ks=p?p.opts.map(o=>[o,o]):[]}
   else{ks=[['none','Chưa có ngày']];for(let d=todayISO();d<=endOfWeek(todayISO());d=addDays(d,1))ks.push([d,fmtD(d)])}
   pickSingle('Chuyển "'+t.name+'" sang',ks,'',k=>{if(k)setGroupValue(t,g,k)},{});
 }
@@ -764,12 +809,10 @@ function focusClose(){if(NAV&&topLayer()==='focus')history.back();else doFocusCl
 function doFocusClose(){{const i=layers.lastIndexOf('focus');if(i>=0)layers.splice(i,1)}
   clearInterval(fT);$('#focus').classList.remove('on');render()}
 
-function enterReorder(){reorder=true;pushLayer('reorder');renderBar()}
 function layerClose(t){
   if(t==='pop')doClosePop();
   else if(t==='sheet')doCloseSheet();
   else if(t==='focus')doFocusClose();
-  else if(t==='reorder'){reorder=false;renderBar()}
   else if(t==='tab'){S.active=S.views[0].id;save();render()}
 }
 // ----- Lịch timetable (tuần / ngày / tháng) -----
@@ -889,6 +932,7 @@ function projSheet(pid,keep,focusNew){
   const pinned=ns.filter(n=>n.pin),other=ns.filter(n=>!n.pin);
   let h='<div class="pgtop"><button data-a="close">‹ Đóng</button><span></span></div><div class="ttlw"><input class="ttl" data-i="pname2" value="'+esc(p.name)+'"></div>'
    +(pr.n?'<div class="two" style="margin-bottom:8px"><div class="pbar" style="width:120px"><i style="width:'+Math.round(pr.d/pr.n*100)+'%"></i></div><span class="small">'+pr.d+'/'+pr.n+' việc xong</span></div>':'')
+   +'<div class="ba" style="margin:0 0 4px"><button class="btn g" data-a="pleft">◀ Dời cột sang trái</button><button class="btn g" data-a="pright">Dời cột sang phải ▶</button></div>'
    +'<div class="sec">Ghi chú mới</div><textarea data-i="newnote" rows="3" placeholder="Viết ghi chú, thông tin quan trọng của dự án…"></textarea><div class="ba" style="margin-top:8px"><button class="btn" data-a="nadd">Thêm ghi chú</button></div>'
    +(pinned.length?'<div class="sec">Đã ghim</div>'+pinned.map(card).join(''):'')
    +(other.length?'<div class="sec">Ghi chú khác</div>'+other.map(card).join(''):'');
@@ -903,7 +947,7 @@ function act(a,v){
   const s=sh,t=s&&s.type==='task'?T(s.id):null,vw=s&&s.type==='view'?S.views.find(x=>x.id===s.id):null;
   switch(a){
     case 'close':return closeSheet();
-    case 'reorder':closeSheet();setTimeout(enterReorder,200);return;
+    case 'pleft':case 'pright':{const i=S.projects.findIndex(p=>p.id===s.id),j=a==='pleft'?i-1:i+1;if(j>=0&&j<S.projects.length){const x=S.projects[i];S.projects[i]=S.projects[j];S.projects[j]=x}save();render();return projSheet(s.id,true)}
     case 'nadd':{const p=P(s.id),x=val('newnote').trim();if(x)pnotes(p).unshift({id:uid(),text:x,pin:false});save();return projSheet(s.id,true)}
     case 'npin':{const n=pnotes(P(s.id)).find(x=>x.id===v);n.pin=!n.pin;save();return projSheet(s.id,true)}
     case 'ndel':{const p=P(s.id);p.notes=pnotes(p).filter(x=>x.id!==v);save();return projSheet(s.id,true)}
@@ -976,11 +1020,10 @@ document.addEventListener('click',e=>{
   }
   const a=g('[data-a]');
   if(a){e.preventDefault();return act(a.dataset.a,a.dataset.v)}
+  const cb=g('[data-coll]');
+  if(cb){const v=curView();v.coll=v.coll||[];tog(v.coll,cb.dataset.coll);save();return render()}
   const ck=g('[data-ck]');
   if(ck){const t=T(ck.dataset.ck);markDone(t,t.status!=='done');save();return refreshSheet()}
-  const tl=g('[data-tl]'),tr=g('[data-tr]');
-  if(tl||tr){const id=(tl||tr).dataset[tl?'tl':'tr'],i=S.views.findIndex(x=>x.id===id),j=tl?i-1:i+1;if(j>=0&&j<S.views.length){const a=S.views[i];S.views[i]=S.views[j];S.views[j]=a}save();return renderBar()}
-  if(g('[data-rdone]')){save();if(NAV&&topLayer()==='reorder')history.back();else{reorder=false;renderBar()}return}
   const mv=g('[data-mv]');
   if(mv)return mvSheet(mv.dataset.mv);
   const pk=g('[data-pk]');
@@ -1022,9 +1065,6 @@ document.addEventListener('click',e=>{
   if(g('#pick'))return focusShow(pickTask());
 });
 const bar=$('#bar');
-bar.addEventListener('pointerdown',e=>{if(reorder||!e.target.closest('[data-v]'))return;lpFired=false;clearTimeout(lpT);lpT=setTimeout(()=>{lpFired=true;enterReorder();if(navigator.vibrate)try{navigator.vibrate(20)}catch(x){}},550)});
-['pointerup','pointercancel','pointerleave'].forEach(ev=>bar.addEventListener(ev,()=>{clearTimeout(lpT);setTimeout(()=>{lpFired=false},350)}));
-bar.addEventListener('contextmenu',e=>e.preventDefault());
 $('#sheet').addEventListener('change',onInput);
 $('#sheet').addEventListener('input',onInput);
 $('#sheet').addEventListener('keydown',onKey);
@@ -1032,6 +1072,97 @@ $('#pop').addEventListener('change',e=>{if(popState&&popState.chg)popState.chg(e
 $('#pop').addEventListener('keydown',e=>{
   if(e.key==='Enter'&&e.target.dataset&&e.target.dataset.pi==='add'){const v=e.target.value.trim();if(v&&popState&&popState.add)popState.add(v)}
 });
+// ----- Kéo thả cột (board) và tab (menu dưới) -----
+let DG=null,LPc=null,TD=null,TDt=null;
+const swallowClick=()=>{lpFired=true;setTimeout(()=>{lpFired=false},350)};
+document.addEventListener('touchmove',e=>{if(DG||TD)e.preventDefault()},{passive:false});
+function beginColDrag(col,e){
+  if(!col||DG)return;
+  const cont=col.parentElement,axis=cont.dataset.dragc||'x';
+  DG={col,cont,axis,px:e.clientX,py:e.clientY,sc:axis==='x'?cont:$('#main'),raf:0};
+  col.classList.add('dragging');
+  if(navigator.vibrate)try{navigator.vibrate(15)}catch(x){}
+  colLoop();
+}
+function colMove(){
+  const {col,cont,axis}=DG;
+  const kids=[...cont.children].filter(k=>k.dataset&&k.dataset.gk!==undefined);
+  const p=axis==='x'?DG.px:DG.py,ci=kids.indexOf(col);
+  for(let i=0;i<kids.length;i++){
+    const k=kids[i];if(k===col)continue;
+    const r=k.getBoundingClientRect(),mid=axis==='x'?r.left+r.width/2:r.top+r.height/2;
+    if(i>ci&&p>mid){cont.insertBefore(col,k.nextSibling);break}
+    if(i<ci&&p<mid){cont.insertBefore(col,k);break}
+  }
+}
+function colLoop(){
+  if(!DG)return;
+  const sc=DG.sc,r=sc.getBoundingClientRect();
+  if(DG.axis==='x'){if(DG.px<r.left+50)sc.scrollLeft-=14;else if(DG.px>r.right-50)sc.scrollLeft+=14}
+  else{if(DG.py<r.top+70)sc.scrollTop-=14;else if(DG.py>r.bottom-70)sc.scrollTop+=14}
+  colMove();
+  DG.raf=requestAnimationFrame(colLoop);
+}
+function endColDrag(){
+  if(!DG)return;
+  cancelAnimationFrame(DG.raf);
+  const keys=[...DG.cont.children].map(k=>k.dataset&&k.dataset.gk).filter(k=>k);
+  DG.col.classList.remove('dragging');
+  const v=curView(),g=v.group==='none'?'status':v.group;
+  DG=null;applyOrder(g,keys);save();swallowClick();render();
+}
+function tabMove(){
+  const bar=$('#bar'),tabs=[...bar.querySelectorAll('.tab[data-v]')],tab=TD.tab,ci=tabs.indexOf(tab),x=TD.px;
+  for(let i=0;i<tabs.length;i++){
+    const k=tabs[i];if(k===tab)continue;
+    const r=k.getBoundingClientRect(),mid=r.left+r.width/2;
+    if(i>ci&&x>mid){bar.insertBefore(tab,k.nextSibling);break}
+    if(i<ci&&x<mid){bar.insertBefore(tab,k);break}
+  }
+}
+function tabLoop(){
+  if(!TD)return;
+  const bar=$('#bar'),r=bar.getBoundingClientRect();
+  if(TD.px<r.left+40)bar.scrollLeft-=10;else if(TD.px>r.right-40)bar.scrollLeft+=10;
+  tabMove();TD.raf=requestAnimationFrame(tabLoop);
+}
+function endTabDrag(){
+  if(!TD)return;
+  cancelAnimationFrame(TD.raf);
+  const ids=[...$('#bar').querySelectorAll('.tab[data-v]')].map(t=>t.dataset.v);
+  TD=null;
+  const nv=ids.map(id=>S.views.find(v=>v.id===id)).filter(Boolean);
+  if(nv.length===S.views.length)S.views=nv;
+  save();swallowClick();renderBar();
+}
+document.addEventListener('pointerdown',e=>{
+  if(e.button>0)return;
+  const tab=e.target.closest('#bar .tab[data-v]');
+  if(tab){
+    clearTimeout(TDt);const st={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY};TDt=st;
+    st.t=setTimeout(()=>{if(TDt!==st)return;TDt=null;TD={tab,px:st.x,py:st.y,raf:0};tab.classList.add('dragging');if(navigator.vibrate)try{navigator.vibrate(15)}catch(x){}tabLoop()},500);
+    return;
+  }
+  const h=e.target.closest('[data-dg]');
+  if(h){const col=h.closest('[data-gk]');if(col){e.preventDefault();beginColDrag(col,e)}return}
+  const head=e.target.closest('.gh');
+  if(head&&head.querySelector('[data-dg]')&&!e.target.closest('button,[data-proj]')){
+    const col=head.closest('[data-gk]'),st={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY};LPc=st;
+    st.t=setTimeout(()=>{if(LPc!==st)return;LPc=null;beginColDrag(col,{clientX:st.x,clientY:st.y})},450);
+  }
+});
+document.addEventListener('pointermove',e=>{
+  [LPc,TDt].forEach(s=>{if(s){s.x=e.clientX;s.y=e.clientY;if(Math.abs(e.clientX-s.sx)>8||Math.abs(e.clientY-s.sy)>8){clearTimeout(s.t);if(s===LPc)LPc=null;if(s===TDt)TDt=null}}});
+  if(DG){DG.px=e.clientX;DG.py=e.clientY}
+  if(TD){TD.px=e.clientX;TD.py=e.clientY}
+});
+['pointerup','pointercancel'].forEach(ev=>document.addEventListener(ev,()=>{
+  if(LPc){clearTimeout(LPc.t);LPc=null}
+  if(TDt){clearTimeout(TDt.t);TDt=null}
+  if(DG)endColDrag();
+  if(TD)endTabDrag();
+}));
+$('#bar').addEventListener('contextmenu',e=>e.preventDefault());
 setTimeout(()=>{const s=document.getElementById('splash');if(s){s.style.opacity=0;setTimeout(()=>s.remove(),450)}},1100);
 load().then(()=>{
   render();
@@ -1047,6 +1178,65 @@ load().then(()=>{
   window.addEventListener('popstate',function(e){const n=(e.state&&e.state.gtd)||0;while(layers.length>n){layerClose(layers.pop())}});
   try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}catch(e){}
   if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('./sw.js').catch(function(){})})}
+
+  window.OFFLINE=true;
+  // ----- Thông báo (chạy khi app đang mở hoặc vừa dùng) -----
+  function notify(title,body,tag){
+    try{
+      if(navigator.serviceWorker&&navigator.serviceWorker.ready){navigator.serviceWorker.ready.then(function(r){r.showNotification(title,{body:body,tag:tag,icon:'icon-192.png',badge:'icon-192.png'})})}
+      else new Notification(title,{body:body,icon:'icon-192.png'});
+    }catch(e){}
+  }
+  function checkNotify(){
+    if(!S||!S.noti||!S.noti.on||typeof Notification==='undefined'||Notification.permission!=='granted')return;
+    const now=new Date(),td=todayISO(),nm=now.getHours()*60+now.getMinutes();
+    const sent=S.noti.sent=S.noti.sent||{};
+    if(Object.keys(sent).length>400)S.noti.sent={};
+    const fire=function(k,t,b){if(S.noti.sent[k])return;S.noti.sent[k]=1;notify(t,b,k);save()};
+    S.tasks.forEach(function(t){
+      if(t.status==='done')return;
+      if(S.noti.start&&t.work&&t.work.iso===td&&t.start){const s=tmin(t.start);if(nm>=s-10&&nm<s+30)fire('s|'+t.id+'|'+td,'Sắp đến giờ: '+t.name,t.start+(t.est?' · '+fmtEst(t.est):''))}
+      if(S.noti.due&&t.due){
+        const ms=new Date(t.due.iso+'T'+(t.due.time||'23:59')+':00')-now;
+        if(ms>36e5&&ms<=864e5)fire('d1|'+t.id+'|'+t.due.iso,'Còn dưới 1 ngày: '+t.name,t.due.label);
+        if(ms>0&&ms<=36e5)fire('d2|'+t.id+'|'+t.due.iso,'Còn dưới 1 giờ: '+t.name,t.due.label);
+      }
+    });
+    if(S.noti.late&&nm>=480&&nm<720){const n=S.tasks.filter(function(t){return eff(t)==='late'}).length;if(n)fire('l|'+td,'Có '+n+' việc cần dời lịch','Mở app để dời sang ngày khác')}
+  }
+  setInterval(checkNotify,30000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)checkNotify()});
+  setTimeout(checkNotify,3000);
+  // ----- Xuất file .ics để Lịch của điện thoại nhắc -----
+  const icsEsc=function(s){return String(s||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/,/g,'\\,').replace(/;/g,'\\;')};
+  const hm=function(m){return pad(Math.floor(m/60)%24)+pad(m%60)+'00'};
+  const alarm=function(min,txt){return 'BEGIN:VALARM\r\nACTION:DISPLAY\r\nDESCRIPTION:'+icsEsc(txt)+'\r\nTRIGGER:-PT'+min+'M\r\nEND:VALARM\r\n'};
+  function buildICS(t){
+    const ev=[],stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+    const add=function(day,s,e,title,alarms){
+      ev.push('BEGIN:VEVENT\r\nUID:'+t.id+'-'+ev.length+'@gtd\r\nDTSTAMP:'+stamp+'\r\nDTSTART:'+day.replace(/-/g,'')+'T'+hm(s)+'\r\nDTEND:'+day.replace(/-/g,'')+'T'+hm(e)+'\r\nSUMMARY:'+icsEsc(title)+'\r\nDESCRIPTION:'+icsEsc(t.note)+'\r\n'+alarms.map(function(a){return alarm(a,title)}).join('')+'END:VEVENT\r\n');
+    };
+    if(t.work){const s=t.start?tmin(t.start):540;let e=t.end?tmin(t.end):s+Math.max(t.est||30,15);if(e<=s)e=s+30;if(e>1439)e=1439;add(t.work.iso,s,e,t.name,[10])}
+    if(t.due){const s=t.due.time?tmin(t.due.time):540;add(t.due.iso,s,Math.min(s+30,1439),'Hạn chót: '+t.name,[1440,60])}
+    return 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//GTD//VI\r\nCALSCALE:GREGORIAN\r\n'+ev.join('')+'END:VCALENDAR\r\n';
+  }
+  document.addEventListener('click',function(e){
+    const b=e.target.closest('[data-a]');if(!b)return;
+    if(b.dataset.a==='ics'&&sh&&sh.type==='task'){
+      const t=T(sh.id);if(!t)return;
+      const blob=new Blob([buildICS(t)],{type:'text/calendar'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='nhac-viec.ics';document.body.appendChild(a);a.click();a.remove();
+    }
+    if(b.dataset.a==='noton'){
+      if(S.noti.on){S.noti.on=false;save();settingsSheet(true);return}
+      if(typeof Notification==='undefined'){return}
+      Notification.requestPermission().then(function(p){
+        if(p==='granted'){S.noti.on=true;save();notify('Get Thing Done','Đã bật thông báo','test');}
+        if(sh&&sh.type==='set')settingsSheet(true);
+      });
+    }
+    if(b.dataset.a==='notopt'){S.noti[b.dataset.v]=!S.noti[b.dataset.v];save();settingsSheet(true)}
+  });
   const f=document.createElement('input');f.type='file';f.accept='.json,application/json';f.style.display='none';document.body.appendChild(f);
   document.addEventListener('click',function(e){
     const b=e.target.closest('[data-a]');if(!b)return;
