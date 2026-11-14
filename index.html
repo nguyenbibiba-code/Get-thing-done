@@ -196,6 +196,7 @@ body.dgn{user-select:none}
 .crumb .md{margin-left:auto}
 .crumb .md~.md{margin-left:0}
 .cb.dr{margin-left:0}
+.addcol{text-align:center;font-size:22px;padding:6px;margin-top:2px;border-radius:8px;background:var(--s2);color:var(--pink)}
 .vg{background:var(--s1);border-radius:10px;padding:4px 8px 8px;margin-bottom:10px}
 .vg .gh{margin:8px 2px 4px}
 .vg .row{background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
@@ -276,12 +277,12 @@ function defaults(){
     props:[],
     tasks:[a,b,c,d],
     views:[
-      {id:'v1',name:'Hôm nay',icon:'☀️',mode:'list',group:'moc',f:{scope:'today',proj:[],tag:[],status:[],star:false,link:false}},
-      {id:'v2',name:'Tuần này',icon:'🗓️',mode:'list',group:'day',f:{scope:'week',proj:[],tag:[],status:[],star:false,link:false}},
-      {id:'v3',name:'Lịch',icon:'📅',mode:'calendar',group:'none',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false}},
-      {id:'v4',name:'Dự án',icon:'📁',mode:'board',group:'project',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false}},
-      {id:'v5',name:'Ma trận',icon:'🧭',mode:'matrix',group:'none',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false}},
-      {id:'v6',name:'Bảng',icon:'▦',mode:'table',group:'none',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false}}
+      {id:'v1',name:'Hôm nay',icon:'☀️',mode:'list',group:'moc',f:{scope:'today',proj:[],tag:[],status:[],star:false,link:false,cp:{}}},
+      {id:'v2',name:'Tuần này',icon:'🗓️',mode:'list',group:'day',f:{scope:'week',proj:[],tag:[],status:[],star:false,link:false,cp:{}}},
+      {id:'v3',name:'Lịch',icon:'📅',mode:'calendar',group:'none',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false,cp:{}}},
+      {id:'v4',name:'Dự án',icon:'📁',mode:'board',group:'project',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false,cp:{}}},
+      {id:'v5',name:'Ma trận',icon:'🧭',mode:'matrix',group:'none',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false,cp:{}}},
+      {id:'v6',name:'Bảng',icon:'▦',mode:'table',group:'none',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false,cp:{}}}
     ],
     active:'v1',
     auto:{delay:true,parentDone:true,doingToday:false}
@@ -335,36 +336,62 @@ function descend(ids){
 function pkids(id){return S.projects.filter(p=>(p.parent||null)===(id||null))}
 function projPath(id){const a=[];let p=P(id),n=0;while(p&&n++<20){a.unshift(p);p=p.parent?P(p.parent):null}return a}
 function pfocus(v){return v.pf&&P(v.pf)?v.pf:null}
-// cột của board Dự án đang là 'tag' (dự án đang mở không có dự án con, hoặc bấm đổi sang Tag)
-function projTagMode(v){const f=pfocus(v);return !!f&&(v.pmode==='tag'||!pkids(f).length)}
+// cách chia cột của board Dự án: auto | proj | tag | pri | status | moc | cp:<id>
+function pmodeList(){return [['auto','Tự động (dự án nhỏ, hết thì tag)'],['proj','Dự án nhỏ'],['tag','Tag'],['pri','Ưu tiên'],['status','Trạng thái'],['moc','Mốc làm']].concat(S.props.filter(p=>p.type==='select').map(p=>['cp:'+p.id,p.name]))}
+function pmodeEff(v){
+  const f=pfocus(v),m=v.pmode||'auto';
+  if(m!=='auto'&&(m.indexOf('cp:')!==0||S.props.find(p=>p.id===m.slice(3))))return m;
+  return (f&&!pkids(f).length)?'tag':'proj';
+}
 function colGroup(v){
   const g=v.group==='none'?'status':v.group;
-  return (g==='project'&&v.mode==='board'&&projTagMode(v))?'tag':g;
+  if(g==='project'&&v.mode==='board'){const m=pmodeEff(v);return m==='proj'?'project':m}
+  return g;
 }
+function hiddenOpen(pid){const set=descend([pid]);return S.tasks.filter(t=>t.status!=='done'&&t.projects.some(x=>set.has(x))).length}
 function projCols(v,ts){
-  const f=pfocus(v),ks=pkids(f);
+  const f=pfocus(v),ks=pkids(f),m=pmodeEff(v);
   const inSet=f?descend([f]):null;
   const base=inSet?ts.filter(t=>t.projects.some(x=>inSet.has(x))):ts;
-  if(projTagMode(v)){
-    let cols=groupsOf(Object.assign({},v,{group:'tag'}),base);
-    if(!v.ptall)cols=cols.filter(c=>c.items.length);
+  if(m!=='proj'){
+    let cols=groupsOf(Object.assign({},v,{group:m}),base);
+    if(!v.ptall&&(m==='tag'||m==='moc'||m.indexOf('cp:')===0))cols=cols.filter(c=>c.items.length);
     return cols;
   }
   const cols=ks.map(p=>{const s=descend([p.id]);return {key:p.id,label:p.name,items:sortTasks(base.filter(t=>t.projects.some(x=>s.has(x))))}});
   if(f){
     const all=new Set();ks.forEach(p=>descend([p.id]).forEach(x=>all.add(x)));
     const items=sortTasks(base.filter(t=>!t.projects.some(x=>all.has(x))));
-    if(items.length)cols.push({key:'',label:'Chưa chia vào dự án nhỏ',items});
+    if(items.length||!ks.length)cols.push({key:'',label:ks.length?'Chưa chia vào dự án nhỏ':'Việc của dự án này',items});
   }
   return cols;
 }
+function filterSummary(v){
+  const f=v.f,a=[];
+  if(f.scope&&f.scope!=='all')a.push(nm(SCOPES,f.scope));
+  if(f.tag.length)a.push('tag: '+f.tag.join(', '));
+  if(f.status.length)a.push('trạng thái');
+  if(f.star)a.push('★');
+  if(f.link)a.push('có liên kết');
+  Object.keys(f.cp||{}).forEach(k=>{if((f.cp[k]||[]).length){const p=S.props.find(x=>x.id===k);if(p)a.push(p.name)}});
+  return a;
+}
 function crumbHtml(v){
-  const f=pfocus(v),path=f?projPath(f):[],tag=projTagMode(v),hasKids=f&&pkids(f).length;
+  const f=pfocus(v),path=f?projPath(f):[],m=pmodeEff(v),fs=filterSummary(v);
   let h='<div class="crumb"><button data-pf=""'+(f?'':' class="on"')+'>📁 Tất cả</button>';
   path.forEach((p,i)=>{h+='<span class="sep">›</span><button data-pf="'+p.id+'"'+(i===path.length-1?' class="on"':'')+'>'+esc(p.name)+'</button>'});
-  if(hasKids)h+='<button class="md" data-pmode="1">Cột: '+(tag?'Tag':'Dự án nhỏ')+' ⇄</button>';
-  if(tag)h+='<button class="md'+(hasKids?'':' alone')+'" data-ptall="1">'+(v.ptall?'Chỉ tag đang dùng':'Hiện cả tag trống')+'</button>';
-  return h+'</div>'+(f&&!hasKids?'<div class="small" style="padding:0 10px 8px">Dự án này không có dự án nhỏ nên các cột là Tag của nó.</div>':'');
+  h+='<button class="md" data-pmode="1">Cột: '+esc(nm(pmodeList(),m))+' ⇄</button>';
+  if(m==='tag'||m==='moc'||m.indexOf('cp:')===0)h+='<button class="md" data-ptall="1">'+(v.ptall?'Chỉ cột đang dùng':'Hiện cả cột trống')+'</button>';
+  h+='<button class="md" data-npj="'+(f||'')+'">＋ '+(f?'Dự án nhỏ':'Dự án lớn')+'</button>';
+  h+='</div>';
+  if(fs.length)h+='<div class="small" style="padding:0 10px 8px">Đang lọc: '+esc(fs.join(' · '))+' <a href="#" data-clrf="1" style="color:var(--pink)">Xoá lọc</a></div>';
+  if(f&&m==='tag'&&!pkids(f).length)h+='<div class="small" style="padding:0 10px 8px">Dự án này chưa có dự án nhỏ nên các cột đang chia theo Tag.</div>';
+  return h;
+}
+function newProjSheet(par){
+  sh={type:'newproj'};
+  openSheet('<div class="pgtop"><button data-a="close">‹ Huỷ</button><span></span></div><div class="ttlw"><div class="ttl" style="font-size:26px;font-weight:700">'+(par?'Dự án nhỏ mới':'Dự án lớn mới')+'</div></div><input type="text" data-i="npname" placeholder="Tên dự án"><div class="f">Nằm trong</div><select data-i="nppar"><option value="">— Không (là dự án lớn)</option>'+S.projects.map(p=>'<option value="'+p.id+'"'+(p.id===par?' selected':'')+'>'+esc(projPath(p.id).map(x=>x.name).join(' › '))+'</option>').join('')+'</select><div class="ba"><button class="btn" data-a="npadd">Thêm dự án</button></div>');
+  setTimeout(()=>{const e=document.querySelector('[data-i=npname]');if(e)e.focus()},80);
 }
 function projProg(pid){
   const set=descend([pid]);
@@ -389,6 +416,7 @@ function filtered(v){
     if(pset&&!t.projects.some(x=>pset.has(x)))return false;
     if(f.tag.length&&!t.tags.some(x=>f.tag.includes(x)))return false;
     if(f.status.length&&!f.status.includes(eff(t)))return false;
+    if(f.cp){for(const k in f.cp){const sel=f.cp[k];if(!sel||!sel.length)continue;const p=S.props.find(x=>x.id===k);if(!p)continue;const raw=t.custom[k];const val=p.type==='check'?(raw?'1':'0'):(raw==null||raw===''?'∅':String(raw));if(!sel.includes(val))return false}}
     if(f.star&&!t.star)return false;
     if(f.link&&!t.links.length)return false;
     const w=t.work&&t.work.iso,d=t.due&&t.due.iso,late=eff(t)==='late';
@@ -531,7 +559,7 @@ function render(){
   const v=curView();if(!v)return;
   renderBar();
   $('#vt').textContent=v.name;
-  const ts=filtered(v);
+  const ts=(v.mode==='board'&&v.group==='project')?filtered(Object.assign({},v,{f:Object.assign({},v.f,{proj:[]})})):filtered(v);
   const open=ts.filter(t=>t.status!=='done');
   const mins=open.filter(t=>t.work&&t.work.iso===todayISO()).reduce((a,t)=>a+(t.est||0),0);
   $('#sub').textContent=['calendar','matrix','table'].includes(v.mode)?ts.length+' việc':(v.f.scope==='today'&&mins?'Hôm nay xếp khoảng '+fmtEst(mins)+(mins>360?' — hơi nhiều, thử dời bớt?':''):open.length+' việc đang mở');
@@ -568,9 +596,11 @@ function boardHtml(v,ts){
   const body=gs.map(c=>{
     const cl=coll.includes(c.key);
     const head=ghHtml(c,{group:g},pbar(c),{dg:DRAGABLE(g,c.key),coll:cl,drill:g==='project'});
-    const inner=cl?'':(o==='vr'?'<div class="swb">'+(cards(c)||'<div class="small" style="padding:8px">Trống</div>')+'</div>':cards(c));
+    const hid=(!cl&&g==='project'&&c.key&&!c.items.length&&hiddenOpen(c.key))?'<div class="small" style="padding:6px 8px">⚠ '+hiddenOpen(c.key)+' việc đang bị bộ lọc ẩn · <a href="#" data-clrf="1" style="color:var(--pink)">Xoá lọc</a></div>':'';
+    const addb=cl?'':'<button class="newrow addcol" data-newin="'+esc(c.key)+'">＋</button>';
+    const inner=cl?'':hid+(o==='vr'?'<div class="swb">'+(cards(c)||'<div class="small" style="padding:8px">Trống</div>')+'</div>':cards(c));
     const cls=o==='h'?'col':o==='vs'?'vg':'vg sw';
-    return '<div class="'+cls+(cl?' cl':'')+'" data-gk="'+esc(c.key)+'">'+head+inner+'</div>';
+    return '<div class="'+cls+(cl?' cl':'')+'" data-gk="'+esc(c.key)+'">'+head+inner+addb+'</div>';
   }).join('');
   const empty=isProj&&!gs.length?'<div class="empty">Dự án này chưa có việc nào</div>':'';
   return (isProj?crumbHtml(v):'')+(o==='h'?'<div class="board" data-dragc="x">':'<div class="vboard" data-dragc="y">')+body+'</div>'+empty+NEWROW;
@@ -767,11 +797,19 @@ function viewSheet(id,keep){
    +row('stat','Chỉ trạng thái',pill(v.f.status.map(x=>STAT[x])))
    +row('star','Chỉ việc ★',v.f.star?'Có':'<span class="ph">Không</span>')
    +row('link','Chỉ việc có liên kết',v.f.link?'Có':'<span class="ph">Không</span>')
+   +S.props.map(p=>row('cp:'+p.id,'Lọc theo cột "'+esc(p.name)+'"',pill(((v.f.cp||{})[p.id]||[]).map(x=>nm(cpOpts(p),x))))).join('')
    +'<div class="ba"><button class="btn g" data-a="vleft">◀ Dời trái</button><button class="btn g" data-a="vright">Dời phải ▶</button>'+(S.views.length>1?'<button class="btn r" data-a="vdel">Xoá giao diện</button>':'')+'</div>';
   openSheet(h,keep);
 }
+function cpOpts(p){
+  if(p.type==='check')return [['1','Đã tick'],['0','Chưa tick']];
+  let vals=p.type==='select'?p.opts.slice():[];
+  S.tasks.forEach(t=>{const r=t.custom[p.id];if(r!=null&&r!==''&&!vals.includes(String(r)))vals.push(String(r))});
+  return vals.map(x=>[x,x]).concat([['∅','(Để trống)']]);
+}
 function viewPicker(id,k){
   const v=S.views.find(x=>x.id===id);if(!v)return;
+  if(k.indexOf('cp:')===0){const p=S.props.find(x=>x.id===k.slice(3));if(!p)return;v.f.cp=v.f.cp||{};return pickMulti('Chỉ việc có "'+p.name+'" là… (bỏ trống = tất cả)',cpOpts(p),v.f.cp[p.id]||[],a=>{v.f.cp[p.id]=a})}
   if(k==='mode')return pickSingle('Chế độ xem',MODES,v.mode,x=>{v.mode=x;if(x==='board'&&v.group==='none')v.group='status'});
   if(k==='group')return pickSingle('Gom nhóm / cột theo',groupList(),v.group,x=>{v.group=x});
   if(k==='orient')return pickSingle('Hướng board',ORIENTS,v.orient||'h',x=>{v.orient=x});
@@ -1008,6 +1046,7 @@ function act(a,v){
     case 'vleft':case 'vright':{const i=S.views.indexOf(vw),j=a==='vleft'?i-1:i+1;if(j>=0&&j<S.views.length){S.views[i]=S.views[j];S.views[j]=vw}save();render();return viewSheet(s.id,true)}
     case 'vdel':S.views=S.views.filter(x=>x!==vw);if(S.active===vw.id)S.active=S.views[0].id;return closeSheet();
     case 'auto':S.auto[v]=!S.auto[v];save();return settingsSheet(true);
+    case 'npadd':{const n=val('npname').trim();if(!n)return;S.projects.push({id:uid(),name:n,color:COLORS[S.projects.length%COLORS.length],parent:val('nppar')||null});save();return closeSheet()}
     case 'padd':{const n=val('newproj').trim();if(n){S.projects.push({id:uid(),name:n,color:COLORS[S.projects.length%COLORS.length],parent:val('projpar')||null})}save();return settingsSheet(true)}
     case 'pdel':S.projects=S.projects.filter(p=>p.id!==v);S.projects.forEach(p=>{if(p.parent===v)p.parent=null});S.tasks.forEach(x=>{x.projects=x.projects.filter(i=>i!==v);if(!x.projects.length)x.projects=['p0']});S.views.forEach(w=>w.f.proj=w.f.proj.filter(i=>i!==v));save();return settingsSheet(true);
     case 'tdel':S.tags=S.tags.filter(x=>x!==v);S.tasks.forEach(x=>x.tags=x.tags.filter(i=>i!==v));save();return settingsSheet(true);
@@ -1039,6 +1078,7 @@ function onInput(e){
 function onKey(e){
   if(e.key!=='Enter')return;
   if(e.target.tagName==='TEXTAREA')return;
+  if(e.target.dataset&&e.target.dataset.i==='npname'){e.preventDefault();return act('npadd')}
   addFromInput(e.target);
 }
 function addFromInput(el){
@@ -1078,7 +1118,21 @@ document.addEventListener('click',e=>{
   if(a){e.preventDefault();return act(a.dataset.a,a.dataset.v)}
   const pf=g('[data-pf]');
   if(pf){const v=curView();v.pf=pf.dataset.pf||null;v.pmode='auto';v.ptall=false;save();render();const m=$('#main');if(m)m.scrollTop=0;return}
-  if(g('[data-pmode]')){const v=curView();v.pmode=projTagMode(v)?'auto':'tag';save();return render()}
+  if(g('[data-pmode]')){const v=curView();return pickSingle('Chia cột theo',pmodeList(),pmodeEff(v),x=>{v.pmode=x;v.ptall=false})}
+  const npj=g('[data-npj]');
+  if(npj)return newProjSheet(npj.dataset.npj||'');
+  if(g('[data-clrf]')){e.preventDefault();const v=curView();v.f={scope:'all',proj:[],tag:[],status:[],star:false,link:false,cp:{}};save();return render()}
+  const ni=g('[data-newin]');
+  if(ni){
+    const v=curView(),gg=colGroup(v),k=ni.dataset.newin,o={};
+    if(gg==='project'){if(k)o.proj=k}
+    else if(gg==='tag'){if(k)o.tags=[k]}
+    else if(gg==='pri'){if(k)o.pri=k}
+    else if(gg==='moc'){if(k)o.moc=k}
+    else if(gg==='status'){if(k&&k!=='late')o.status=k}
+    else if(gg.indexOf('cp:')===0){if(k)o.custom={[gg.slice(3)]:k}}
+    const t=newTask(o);save();return taskSheet(t.id);
+  }
   if(g('[data-ptall]')){const v=curView();v.ptall=!v.ptall;save();return render()}
   const cb=g('[data-coll]');
   if(cb){const v=curView();v.coll=v.coll||[];tog(v.coll,cb.dataset.coll);save();return render()}
@@ -1112,14 +1166,14 @@ document.addEventListener('click',e=>{
   const tab=g('#bar [data-v]');
   if(tab){const id=tab.dataset.v;S.active=id;save();if(id!==S.views[0].id)pushLayer('tab');else if(NAV&&topLayer()==='tab')return history.back();return render()}
   if(g('[data-newv]')){
-    const v={id:uid(),name:'Giao diện mới',icon:'',mode:'board',group:'status',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false}};
+    const v={id:uid(),name:'Giao diện mới',icon:'',mode:'board',group:'status',f:{scope:'all',proj:[],tag:[],status:[],star:false,link:false,cp:{}}};
     S.views.push(v);S.active=v.id;save();render();return viewSheet(v.id);
   }
   const dy=g('[data-day]');
   if(dy){calSel=dy.dataset.day;return render()}
   if(g('[data-addprop]'))return propSheet();
   if(e.target.id==='ov')return closeSheet();
-  if(g('#fab'))return quickSheet();
+  if(g('#fab')){const t=newTask({});save();return taskSheet(t.id)}
   if(g('#ved'))return viewSheet(S.active);
   if(g('#set'))return settingsSheet();
   if(g('#pick'))return focusShow(pickTask());
@@ -1280,7 +1334,13 @@ document.addEventListener('pointermove',e=>{
   if(CDt){clearTimeout(CDt.t);CDt=null}
   if(CD)cdEnd();
 }));
-document.addEventListener('contextmenu',e=>{if(e.target.closest('.board .row,.vboard .row'))e.preventDefault()});
+document.addEventListener('contextmenu',e=>{if(e.target.closest('.board .row,.vboard .row,#fab'))e.preventDefault()});
+let FBt=null;
+document.addEventListener('pointerdown',e=>{
+  if(!e.target.closest('#fab'))return;
+  clearTimeout(FBt);FBt=setTimeout(()=>{FBt=null;swallowClick();if(navigator.vibrate)try{navigator.vibrate(15)}catch(x){}quickSheet()},550);
+});
+['pointerup','pointercancel','pointermove'].forEach(ev=>document.addEventListener(ev,()=>{if(FBt){clearTimeout(FBt);FBt=null}}));
 $('#bar').addEventListener('contextmenu',e=>e.preventDefault());
 setTimeout(()=>{const s=document.getElementById('splash');if(s){s.style.opacity=0;setTimeout(()=>s.remove(),450)}},1100);
 load().then(()=>{
