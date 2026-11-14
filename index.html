@@ -195,8 +195,7 @@ body.dgn{user-select:none}
 .crumb .md{color:var(--pink);background:none}
 .crumb .md{margin-left:auto}
 .crumb .md~.md{margin-left:0}
-.cb.dr{margin-left:auto}
-.cb.dr+.cb{margin-left:0}
+.cb.dr{margin-left:0}
 .vg{background:var(--s1);border-radius:10px;padding:4px 8px 8px;margin-bottom:10px}
 .vg .gh{margin:8px 2px 4px}
 .vg .row{background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
@@ -547,9 +546,10 @@ function ghHtml(g,v,pb,o){
   o=o||{};
   const isP=v.group==='project'&&g.key;
   return '<div class="gh">'+(o.dg?'<span class="dg" data-dg="1">⋮⋮</span>':'')
-   +(isP?'<span data-proj="'+g.key+'" style="cursor:pointer;color:var(--ink)">'+esc(g.label)+' ›</span>':'<span>'+esc(g.label)+'</span>')
+   +(isP&&o.drill?'<span data-pf="'+g.key+'" style="cursor:pointer;color:var(--ink);flex:1">'+esc(g.label)+' ›</span>'
+    :isP?'<span data-proj="'+g.key+'" style="cursor:pointer;color:var(--ink)">'+esc(g.label)+' ›</span>':'<span>'+esc(g.label)+'</span>')
    +' <span class="n">'+g.items.length+'</span>'+(pb||'')
-   +(isP&&o.drill?'<button class="cb dr" data-pf="'+g.key+'" title="Mở dự án này">⤵</button>':'')
+   +(isP&&o.drill?'<button class="cb dr" data-proj="'+g.key+'" title="Ghi chú / đổi tên">✎</button>':'')
    +(o.coll!==undefined?'<button class="cb" data-coll="'+esc(g.key)+'">'+(o.coll?'▸':'▾')+'</button>':'')+'</div>'
    +(isP&&!o.coll?projNotesHtml(g.key):'');
 }
@@ -1206,7 +1206,7 @@ document.addEventListener('pointerdown',e=>{
   const h=e.target.closest('[data-dg]');
   if(h){const col=h.closest('[data-gk]');if(col){e.preventDefault();beginColDrag(col,e)}return}
   const head=e.target.closest('.gh');
-  if(head&&head.querySelector('[data-dg]')&&!e.target.closest('button,[data-proj]')){
+  if(head&&head.querySelector('[data-dg]')&&!e.target.closest('button,[data-proj],[data-pf]')){
     const col=head.closest('[data-gk]'),st={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY};LPc=st;
     st.t=setTimeout(()=>{if(LPc!==st)return;LPc=null;beginColDrag(col,{clientX:st.x,clientY:st.y})},450);
   }
