@@ -196,7 +196,12 @@ body.dgn{user-select:none}
 .crumb .md{margin-left:auto}
 .crumb .md~.md{margin-left:0}
 .cb.dr{margin-left:0}
-.addcol{text-align:center;font-size:22px;padding:6px;margin-top:2px;border-radius:8px;background:var(--s2);color:var(--pink)}
+.addcol{display:inline-block;width:auto;padding:2px 14px;margin:2px 0 4px;font-size:17px;line-height:22px;border-radius:7px;background:var(--s2);color:var(--pink)}
+.gh.two{flex-direction:column;align-items:stretch;gap:3px}
+.gh .g1{display:flex;align-items:center;gap:8px;min-width:0}
+.gh .gt{flex:1;min-width:0;cursor:pointer;color:var(--ink);overflow-wrap:anywhere}
+.gh .g2{display:flex;align-items:center;gap:8px;padding-left:2px;font-size:14px}
+.gh .g2 .pbar{flex:1;width:auto}
 .vg{background:var(--s1);border-radius:10px;padding:4px 8px 8px;margin-bottom:10px}
 .vg .gh{margin:8px 2px 4px}
 .vg .row{background:var(--bg);border:1px solid var(--line);border-radius:8px;margin-bottom:6px}
@@ -573,12 +578,15 @@ function render(){
 function ghHtml(g,v,pb,o){
   o=o||{};
   const isP=v.group==='project'&&g.key;
-  return '<div class="gh">'+(o.dg?'<span class="dg" data-dg="1">⋮⋮</span>':'')
-   +(isP&&o.drill?'<span data-pf="'+g.key+'" style="cursor:pointer;color:var(--ink);flex:1">'+esc(g.label)+' ›</span>'
-    :isP?'<span data-proj="'+g.key+'" style="cursor:pointer;color:var(--ink)">'+esc(g.label)+' ›</span>':'<span>'+esc(g.label)+'</span>')
-   +' <span class="n">'+g.items.length+'</span>'+(pb||'')
-   +(isP&&o.drill?'<button class="cb dr" data-proj="'+g.key+'" title="Ghi chú / đổi tên">✎</button>':'')
-   +(o.coll!==undefined?'<button class="cb" data-coll="'+esc(g.key)+'">'+(o.coll?'▸':'▾')+'</button>':'')+'</div>'
+  const title=isP&&o.drill?'<span class="gt" data-pf="'+g.key+'">'+esc(g.label)+' ›</span>'
+    :isP?'<span data-proj="'+g.key+'" style="cursor:pointer;color:var(--ink)">'+esc(g.label)+' ›</span>':'<span class="gt">'+esc(g.label)+'</span>';
+  const btns=(isP&&o.drill?'<button class="cb dr" data-proj="'+g.key+'" title="Ghi chú / đổi tên">✎</button>':'')
+   +(o.coll!==undefined?'<button class="cb" data-coll="'+esc(g.key)+'">'+(o.coll?'▸':'▾')+'</button>':'');
+  const dg=o.dg?'<span class="dg" data-dg="1">⋮⋮</span>':'';
+  if(o.two)return '<div class="gh two"><div class="g1">'+dg+title+btns+'</div>'
+   +(o.coll?'':'<div class="g2"><span class="n">'+g.items.length+' việc</span>'+(pb||'')+'</div>')+'</div>'
+   +(isP&&!o.coll?projNotesHtml(g.key):'');
+  return '<div class="gh">'+dg+title+' <span class="n">'+g.items.length+'</span>'+(pb||'')+btns+'</div>'
    +(isP&&!o.coll?projNotesHtml(g.key):'');
 }
 const NEWROW='<button class="newrow" data-new="1">＋ Mới</button>';
@@ -595,7 +603,7 @@ function boardHtml(v,ts){
   const pbar=c=>{if(g==='project'&&c.key){const p=projProg(c.key);if(p.n)return '<div class="pbar"><i style="width:'+Math.round(p.d/p.n*100)+'%"></i></div><span class="n">'+p.d+'/'+p.n+'</span>'}return ''};
   const body=gs.map(c=>{
     const cl=coll.includes(c.key);
-    const head=ghHtml(c,{group:g},pbar(c),{dg:DRAGABLE(g,c.key),coll:cl,drill:g==='project'});
+    const head=ghHtml(c,{group:g},pbar(c),{dg:DRAGABLE(g,c.key),coll:cl,drill:g==='project',two:true});
     const hid=(!cl&&g==='project'&&c.key&&!c.items.length&&hiddenOpen(c.key))?'<div class="small" style="padding:6px 8px">⚠ '+hiddenOpen(c.key)+' việc đang bị bộ lọc ẩn · <a href="#" data-clrf="1" style="color:var(--pink)">Xoá lọc</a></div>':'';
     const addb=cl?'':'<button class="newrow addcol" data-newin="'+esc(c.key)+'">＋</button>';
     const inner=cl?'':hid+(o==='vr'?'<div class="swb">'+(cards(c)||'<div class="small" style="padding:8px">Trống</div>')+'</div>':cards(c));
