@@ -196,7 +196,11 @@ body.dgn{user-select:none}
 .crumb .md{margin-left:auto}
 .crumb .md~.md{margin-left:0}
 .cb.dr{margin-left:0}
-.addcol{display:inline-block;width:auto;padding:2px 14px;margin:2px 0 4px;font-size:17px;line-height:22px;border-radius:7px;background:var(--s2);color:var(--pink)}
+.addcol{display:block;width:auto;padding:2px 22px;margin:2px auto 4px;font-size:17px;line-height:22px;border-radius:7px;background:var(--s2);color:var(--pink)}
+.row.dbf{box-shadow:0 -3px 0 var(--pink)}
+.row.dba{box-shadow:0 3px 0 var(--pink)}
+.swb .row.dbf{box-shadow:-3px 0 0 var(--pink)}
+.swb .row.dba{box-shadow:3px 0 0 var(--pink)}
 .gh.two{flex-direction:column;align-items:stretch;gap:3px}
 .gh .g1{display:flex;align-items:center;gap:8px;min-width:0}
 .gh .gt{flex:1;min-width:0;cursor:pointer;color:var(--ink);overflow-wrap:anywhere}
@@ -363,10 +367,10 @@ function projCols(v,ts){
     if(!v.ptall&&(m==='tag'||m==='moc'||m.indexOf('cp:')===0))cols=cols.filter(c=>c.items.length);
     return cols;
   }
-  const cols=ks.map(p=>{const s=descend([p.id]);return {key:p.id,label:p.name,items:sortTasks(base.filter(t=>t.projects.some(x=>s.has(x))))}});
+  const cols=ks.map(p=>{const s=descend([p.id]);return {key:p.id,label:p.name,items:sortTasks(base.filter(t=>t.projects.some(x=>s.has(x))),true)}});
   if(f){
     const all=new Set();ks.forEach(p=>descend([p.id]).forEach(x=>all.add(x)));
-    const items=sortTasks(base.filter(t=>!t.projects.some(x=>all.has(x))));
+    const items=sortTasks(base.filter(t=>!t.projects.some(x=>all.has(x))),true);
     if(items.length||!ks.length)cols.push({key:'',label:ks.length?'Chưa chia vào dự án nhỏ':'Việc của dự án này',items});
   }
   return cols;
@@ -433,8 +437,9 @@ function filtered(v){
     return true;
   });
 }
-function sortTasks(a){
+function sortTasks(a,manual){
   return a.slice().sort((x,y)=>{
+    if(manual){const ox=x.ord==null?1e9:x.ord,oy=y.ord==null?1e9:y.ord;if(ox!==oy)return ox-oy}
     const wx=x.work?x.work.iso:'9999',wy=y.work?y.work.iso:'9999';
     if(wx!==wy)return wx<wy?-1:1;
     const dx=x.due?x.due.iso:'9999',dy=y.due?y.due.iso:'9999';
@@ -470,7 +475,7 @@ function groupsOf(v,ts){
     else if(g==='day'){const td=todayISO();ks=[eff(t)==='late'?'late':!t.work?'none':t.work.iso>=td?t.work.iso:'late']}
     ks.forEach(k=>{const o=keys.find(x=>x.key===k);if(o)o.items.push(t)});
   });
-  keys.forEach(k=>k.items=sortTasks(k.items));
+  keys.forEach(k=>k.items=sortTasks(k.items,v.mode==='board'));
   return keys.filter(k=>k.items.length||g==='status'||g==='project'||(g==='moc'&&k.key)||(v.mode==='board'&&g!=='day'&&k.key));
 }
 function setGroupValue(t,g,k){
@@ -857,7 +862,8 @@ function mvSheet(id){
   else if(g==='moc')ks=S.mocs.map(x=>[x,x]);
   else if(g.indexOf('cp:')===0){const p=S.props.find(x=>x.id===g.slice(3));ks=p?p.opts.map(o=>[o,o]):[]}
   else{ks=[['none','Chưa có ngày']];for(let d=todayISO();d<=endOfWeek(todayISO());d=addDays(d,1))ks.push([d,fmtD(d)])}
-  pickSingle('Chuyển "'+t.name+'" sang',ks,'',k=>{if(k)setGroupValue(t,g,k)},{});
+  ks=[['__top','⬆ Đưa lên đầu cột'],['__up','↑ Lên 1 bậc'],['__down','↓ Xuống 1 bậc'],['__bot','⬇ Đưa xuống cuối cột']].concat(ks);
+  pickSingle('Di chuyển "'+t.name+'"',ks,'',k=>{if(!k)return;if(k.indexOf('__')===0){setTimeout(()=>moveInCol(id,k.slice(2)),0);return}setGroupValue(t,g,k)},{});
 }
 // ----- Nhập nhanh nhiều việc -----
 const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/đ/g,'d').toLowerCase();
@@ -1296,12 +1302,37 @@ function cdBegin(row,st){
   if(navigator.vibrate)try{navigator.vibrate(15)}catch(x){}
   cdLoop();
 }
+function cdBefore(hot,row,px,py){
+  const rows=[...hot.querySelectorAll('.row[data-id]')].filter(r=>r!==row),horiz=!!hot.querySelector('.swb');
+  for(const r of rows){const b=r.getBoundingClientRect();if(horiz?px<b.left+b.width/2:py<b.top+b.height/2)return {before:r,rows}}
+  return {before:null,rows};
+}
+function cdMark(m){
+  if(CD.mk){CD.mk.el.classList.remove(CD.mk.cls);CD.mk=null}
+  if(m)m.el.classList.add(m.cls),CD.mk=m;
+}
+function ordIds(col,skipId,beforeEl){
+  const ids=[...col.querySelectorAll('.row[data-id]')].map(r=>r.dataset.id).filter(i=>i!==skipId);
+  const at=beforeEl?ids.indexOf(beforeEl.dataset.id):ids.length;
+  ids.splice(at<0?ids.length:at,0,skipId);return ids;
+}
+function applyOrd(ids){ids.forEach((i,n)=>{const t=T(i);if(t)t.ord=n})}
+// đổi vị trí 1 việc trong cột đang hiện trên màn hình: up | down | top | bot
+function moveInCol(id,how){
+  const row=document.querySelector('.board .row[data-id="'+id+'"],.vboard .row[data-id="'+id+'"]');if(!row)return;
+  const col=row.closest('[data-gk]'),ids=[...col.querySelectorAll('.row[data-id]')].map(r=>r.dataset.id),i=ids.indexOf(id);
+  ids.splice(i,1);
+  const j=how==='top'?0:how==='bot'?ids.length:how==='up'?Math.max(0,i-1):Math.min(ids.length,i+1);
+  ids.splice(j,0,id);applyOrd(ids);save();render();
+}
 function cdLoop(){
   if(!CD)return;
   CD.gh.style.left=(CD.px-CD.ox)+'px';CD.gh.style.top=(CD.py-CD.oy)+'px';
   const el=document.elementFromPoint(CD.px,CD.py),col=el&&el.closest?el.closest('[data-gk]'):null;
   const hot=col&&col.closest('.board,.vboard')?col:null;
   if(hot!==CD.hot){if(CD.hot)CD.hot.classList.remove('drop');CD.hot=hot;if(hot&&hot.dataset.gk!==CD.src)hot.classList.add('drop')}
+  if(hot){const r=cdBefore(hot,CD.row,CD.px,CD.py);CD.before=r.before;const last=r.rows[r.rows.length-1];cdMark(r.before?{el:r.before,cls:'dbf'}:last?{el:last,cls:'dba'}:null)}
+  else{CD.before=null;cdMark(null)}
   const m=$('#main'),mr=m.getBoundingClientRect();
   if(CD.py<mr.top+70)m.scrollTop-=14;else if(CD.py>mr.bottom-70)m.scrollTop+=14;
   if(CD.bd){const br=CD.bd.getBoundingClientRect();if(CD.px<br.left+50)CD.bd.scrollLeft-=14;else if(CD.px>br.right-50)CD.bd.scrollLeft+=14}
@@ -1310,11 +1341,18 @@ function cdLoop(){
 function cdEnd(){
   if(!CD)return;
   cancelAnimationFrame(CD.raf);
-  const {gh,row,id,src,hot}=CD;
+  const {gh,row,id,src,hot,before}=CD;
+  cdMark(null);
   gh.remove();row.classList.remove('dragging');if(hot)hot.classList.remove('drop');
   CD=null;swallowClick();
   if(!hot)return;
-  const key=hot.dataset.gk;if(key===src)return;
+  const key=hot.dataset.gk;
+  if(key===src){
+    const old=[...hot.querySelectorAll('.row[data-id]')].map(r=>r.dataset.id),ids=ordIds(hot,id,before);
+    if(old.join()!==ids.join()){applyOrd(ids);save();render()}
+    return;
+  }
+  const ids=ordIds(hot,id,before);
   const v=curView(),g=colGroup(v),t=T(id);if(!t)return;
   if(g==='project'){
     const pc=pfocus(v),rm=src?descend([src]):new Set(pc?[pc]:[]),nk=key||pc;
@@ -1325,6 +1363,7 @@ function cdEnd(){
     t.tags=t.tags.filter(x=>x!==src);
     if(key&&!t.tags.includes(key))t.tags.push(key);
   }else setGroupValue(t,g,key);
+  applyOrd(ids);
   save();render();
 }
 document.addEventListener('pointerdown',e=>{
