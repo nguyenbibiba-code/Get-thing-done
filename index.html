@@ -70,6 +70,7 @@ td[data-cell]:active{background:var(--s1)}
 .mx{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0 4px}
 .mx>div{background:var(--s1);border-radius:var(--r);padding:8px;min-height:120px}
 .mx h4{margin:0 0 4px;font-size:14px;color:var(--mute)}
+.mx>div.drop,.lgw>div.drop{outline:2px dashed var(--pink);outline-offset:-2px}
 #ov,#pop{position:fixed;inset:0;background:#000a;display:none;align-items:flex-end;z-index:20}
 #pop{z-index:40;background:#0008}
 #ov.on,#pop.on{display:flex}
@@ -242,6 +243,13 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;',
 
 const PRI={now:'Làm được ngay',rand:'Làm ngẫu nhiên',slow:'Làm từ từ',save:'Để dành'};
 const PRI_ORDER=['now','rand','slow','save'];
+// 4 ô của Ma trận (từ trái qua phải, trên xuống dưới). 'daily' = việc lặp Hằng ngày
+const MX=[['daily','Làm hàng ngày'],['now','Làm được ngay · không điều kiện'],['wait','Làm được · có điều kiện phải đợi xong'],['none','Chưa có thời điểm']];
+function mxOf(t){return t.repeat==='daily'?'daily':(t.mx==='now'||t.mx==='wait'?t.mx:'none')}
+function setMx(t,k){
+  if(k==='daily'){t.repeat='daily';if(!t.work)t.work=presetDate('today')}
+  else{if(t.repeat==='daily')t.repeat='';t.mx=k}
+}
 const STAT={idea:'Ý tưởng',doing:'Đang làm',late:'Đang trì hoãn',done:'Xong'};
 const COLORS=['#e8a33d','#6aa57f','#5b8fd0','#c0699a','#9a7bd0','#e0875a','#4fb0b0'];
 
@@ -353,6 +361,7 @@ function pmodeEff(v){
   return (f&&!pkids(f).length)?'tag':'proj';
 }
 function colGroup(v){
+  if(v.mode==='matrix')return 'mx';
   const g=v.group==='none'?'status':v.group;
   if(g==='project'&&v.mode==='board'){const m=pmodeEff(v);return m==='proj'?'project':m}
   return g;
@@ -486,6 +495,7 @@ function setGroupValue(t,g,k){
   else if(g==='moc')t.moc=k;
   else if(g.indexOf('cp:')===0)t.custom[g.slice(3)]=k;
   else if(g==='day'){if(k==='none')t.work=null;else if(k!=='late')t.work={iso:k,label:fmtD(k)}}
+  else if(g==='mx')setMx(t,k);
 }
 function markDone(t,on){
   if(on){
@@ -597,7 +607,8 @@ function ghHtml(g,v,pb,o){
 const NEWROW='<button class="newrow" data-new="1">＋ Mới</button>';
 function listHtml(v,ts){
   if(!ts.length)return '<div class="empty">Chưa có việc nào ở đây</div>'+NEWROW;
-  return groupsOf(v,ts).map(g=>(g.label?ghHtml(g,v):'')+g.items.map(t=>rowHtml(t,{noProj:v.group==='project'})).join('')).join('')+NEWROW;
+  const dd=v.group!=='none';
+  return '<div class="lgw">'+groupsOf(v,ts).map(g=>(dd?'<div data-gk="'+esc(g.key)+'">':'')+(g.label?ghHtml(g,v):'')+g.items.map(t=>rowHtml(t,{noProj:v.group==='project'})).join('')+(dd?'</div>':'')).join('')+'</div>'+NEWROW;
 }
 const DRAGABLE=(g,k)=>g!=='day'&&g!=='none'&&k!==''&&k!=null;
 function boardHtml(v,ts){
@@ -642,8 +653,9 @@ function tableHtml(ts){
   return '<div class="tbl"><table>'+head+body+'</table></div>'+NEWROW;
 }
 function matrixHtml(ts){
-  const q=[[true,true,'Làm ngay · Gấp + Quan trọng'],[false,true,'Lên lịch · Quan trọng'],[true,false,'Làm gọn · Gấp'],[false,false,'Để sau']];
-  return '<div class="small" style="margin:4px 8px 8px">Gấp = trễ hoặc hạn trong 2 ngày. Quan trọng = đánh ★ trong task.</div><div class="mx">'+q.map(c=>'<div><h4>'+c[2]+'</h4>'+sortTasks(ts.filter(t=>isUrgent(t)===c[0]&&t.star===c[1])).map(t=>rowHtml(t,{noProj:true})).join('')+'</div>').join('')+'</div>';
+  return '<div class="small" style="margin:4px 8px 8px">Nhấn giữ một việc rồi kéo sang ô khác (hoặc bấm ⇄) để chuyển ô. Việc mới mặc định nằm ở ô "Chưa có thời điểm".</div><div class="mx">'
+   +MX.map(c=>{const items=sortTasks(ts.filter(t=>mxOf(t)===c[0]),true);
+     return '<div data-gk="'+c[0]+'"><h4>'+c[1]+' <span class="n">'+items.length+'</span></h4>'+items.map(t=>rowHtml(t,{noProj:true,mv:true})).join('')+'</div>'}).join('')+'</div>';
 }
 function tickCountdown(){
   document.querySelectorAll('[data-due]').forEach(el=>{
@@ -714,6 +726,7 @@ function openPicker(id,key){
   if(key==='status')return pickSingle('Trạng thái',[['idea','Ý tưởng'],['doing','Đang làm'],['done','Xong']],t.status,v=>{if(v==='done')markDone(t,true);else{t.status=v;delete t.doneAt}});
   if(key==='proj')return pickMulti('Dự án (chọn được nhiều)',projOpts(),t.projects,a=>{t.projects=a.length?a:['p0']});
   if(key==='tag')return pickMulti('Tag',S.tags.map(x=>[x,x]),t.tags,a=>{t.tags=a},{add:'+ tag mới rồi Enter',addFn:v=>{if(!S.tags.includes(v))S.tags.push(v)}});
+  if(key==='mx')return pickSingle('Ô ma trận',MX,mxOf(t),v=>{setMx(t,v)});
   if(key==='pri')return pickSingle('Mức ưu tiên',priOrder().map(x=>[x,PRI[x]]),t.pri,v=>{t.pri=v});
   if(key==='moc')return pickSingle('Mốc thời điểm làm',S.mocs.map(x=>[x,x]),t.moc,v=>{t.moc=v},{clear:'Bỏ mốc',add:'+ mốc mới (vd: Sau cà phê) rồi Enter',addFn:v=>{if(!S.mocs.includes(v))S.mocs.push(v);t.moc=v}});
   if(key==='rep')return pickSingle('Lặp lại',[['','Không lặp'],['daily','Hằng ngày'],['weekly','Hằng tuần'],['monthly','Hằng tháng']],t.repeat,v=>{t.repeat=v});
@@ -742,12 +755,13 @@ function openPicker(id,key){
 function projOpts(){return S.projects.map(p=>[p.id,(p.parent?'↳ ':'')+p.name])}
 
 // ----- Trang task kiểu Notion -----
-const PKEYS=[['status','Trạng thái',1],['proj','Dự án',1],['work','Ngày làm',1],['due','Hạn chót',1],['tag','Tag'],['pri','Ưu tiên'],['moc','Mốc làm'],['time','Giờ'],['est','Ước tính'],['rep','Lặp lại'],['star','Quan trọng']];
+const PKEYS=[['status','Trạng thái',1],['proj','Dự án',1],['work','Ngày làm',1],['due','Hạn chót',1],['tag','Tag'],['pri','Ưu tiên'],['mx','Ô ma trận',1],['moc','Mốc làm'],['time','Giờ'],['est','Ước tính'],['rep','Lặp lại'],['star','Quan trọng']];
 function pvHtml(t,k){
   const ph='<span class="ph">Trống</span>';
   if(k==='status'){const e=eff(t);return '<span class="pill '+e+'">'+STAT[e]+'</span>'}
   if(k==='proj')return t.projects.map(i=>'<span class="pill">'+esc((P(i)||{}).name)+'</span>').join('')||ph;
   if(k==='tag')return t.tags.map(x=>'<span class="pill">'+esc(x)+'</span>').join('')||ph;
+  if(k==='mx')return '<span class="pill">'+nm(MX,mxOf(t))+'</span>';
   if(k==='pri')return '<span class="pill">'+PRI[t.pri]+'</span>';
   if(k==='work')return t.work?esc(t.work.label)+' <span class="ph">'+fmtD(t.work.iso)+'</span>':ph;
   if(k==='due'){if(!t.due)return ph;const c=countdown(t.due);return esc(t.due.label)+' <span class="ph">'+fmtD(t.due.iso)+(t.due.time?' '+esc(t.due.time):'')+'</span> <span class="pill due'+(c.neg?' late':c.soon?' soon':'')+'">⏳ '+c.txt+'</span>'}
@@ -859,10 +873,11 @@ function mvSheet(id){
   else if(g==='project'){const f=pfocus(v);ks=pkids(f).map(p=>[p.id,p.name]);if(f)ks.push([f,'Chưa chia vào dự án nhỏ']);if(!ks.length)ks=projOpts()}
   else if(g==='tag')ks=S.tags.map(x=>[x,x]);
   else if(g==='pri')ks=priOrder().map(x=>[x,PRI[x]]);
+  else if(g==='mx')ks=MX.slice();
   else if(g==='moc')ks=S.mocs.map(x=>[x,x]);
   else if(g.indexOf('cp:')===0){const p=S.props.find(x=>x.id===g.slice(3));ks=p?p.opts.map(o=>[o,o]):[]}
   else{ks=[['none','Chưa có ngày']];for(let d=todayISO();d<=endOfWeek(todayISO());d=addDays(d,1))ks.push([d,fmtD(d)])}
-  ks=[['__top','⬆ Đưa lên đầu cột'],['__up','↑ Lên 1 bậc'],['__down','↓ Xuống 1 bậc'],['__bot','⬇ Đưa xuống cuối cột']].concat(ks);
+  if(v.mode!=='list')ks=[['__top','⬆ Đưa lên đầu cột'],['__up','↑ Lên 1 bậc'],['__down','↓ Xuống 1 bậc'],['__bot','⬇ Đưa xuống cuối cột']].concat(ks);
   pickSingle('Di chuyển "'+t.name+'"',ks,'',k=>{if(!k)return;if(k.indexOf('__')===0){setTimeout(()=>moveInCol(id,k.slice(2)),0);return}setGroupValue(t,g,k)},{});
 }
 // ----- Nhập nhanh nhiều việc -----
@@ -1319,7 +1334,7 @@ function ordIds(col,skipId,beforeEl){
 function applyOrd(ids){ids.forEach((i,n)=>{const t=T(i);if(t)t.ord=n})}
 // đổi vị trí 1 việc trong cột đang hiện trên màn hình: up | down | top | bot
 function moveInCol(id,how){
-  const row=document.querySelector('.board .row[data-id="'+id+'"],.vboard .row[data-id="'+id+'"]');if(!row)return;
+  const row=document.querySelector('.board .row[data-id="'+id+'"],.vboard .row[data-id="'+id+'"],.mx .row[data-id="'+id+'"]');if(!row)return;
   const col=row.closest('[data-gk]'),ids=[...col.querySelectorAll('.row[data-id]')].map(r=>r.dataset.id),i=ids.indexOf(id);
   ids.splice(i,1);
   const j=how==='top'?0:how==='bot'?ids.length:how==='up'?Math.max(0,i-1):Math.min(ids.length,i+1);
@@ -1329,7 +1344,7 @@ function cdLoop(){
   if(!CD)return;
   CD.gh.style.left=(CD.px-CD.ox)+'px';CD.gh.style.top=(CD.py-CD.oy)+'px';
   const el=document.elementFromPoint(CD.px,CD.py),col=el&&el.closest?el.closest('[data-gk]'):null;
-  const hot=col&&col.closest('.board,.vboard')?col:null;
+  const hot=col&&col.closest('.board,.vboard,.mx,.lgw')?col:null;
   if(hot!==CD.hot){if(CD.hot)CD.hot.classList.remove('drop');CD.hot=hot;if(hot&&hot.dataset.gk!==CD.src)hot.classList.add('drop')}
   if(hot){const r=cdBefore(hot,CD.row,CD.px,CD.py);CD.before=r.before;const last=r.rows[r.rows.length-1];cdMark(r.before?{el:r.before,cls:'dbf'}:last?{el:last,cls:'dba'}:null)}
   else{CD.before=null;cdMark(null)}
@@ -1346,8 +1361,9 @@ function cdEnd(){
   gh.remove();row.classList.remove('dragging');if(hot)hot.classList.remove('drop');
   CD=null;swallowClick();
   if(!hot)return;
-  const key=hot.dataset.gk;
+  const key=hot.dataset.gk,man=!!hot.closest('.board,.vboard,.mx');
   if(key===src){
+    if(!man)return;
     const old=[...hot.querySelectorAll('.row[data-id]')].map(r=>r.dataset.id),ids=ordIds(hot,id,before);
     if(old.join()!==ids.join()){applyOrd(ids);save();render()}
     return;
@@ -1363,12 +1379,12 @@ function cdEnd(){
     t.tags=t.tags.filter(x=>x!==src);
     if(key&&!t.tags.includes(key))t.tags.push(key);
   }else setGroupValue(t,g,key);
-  applyOrd(ids);
+  if(man)applyOrd(ids);
   save();render();
 }
 document.addEventListener('pointerdown',e=>{
   if(e.button>0||DG||TD)return;
-  const row=e.target.closest('.board .row,.vboard .row');
+  const row=e.target.closest('.board .row,.vboard .row,.mx .row,.lgw .row');
   if(!row||e.target.closest('button'))return;
   clearTimeout(CDt&&CDt.t);const st={sx:e.clientX,sy:e.clientY,x:e.clientX,y:e.clientY};CDt=st;
   st.t=setTimeout(()=>{if(CDt!==st)return;CDt=null;cdBegin(row,st)},420);
@@ -1381,7 +1397,7 @@ document.addEventListener('pointermove',e=>{
   if(CDt){clearTimeout(CDt.t);CDt=null}
   if(CD)cdEnd();
 }));
-document.addEventListener('contextmenu',e=>{if(e.target.closest('.board .row,.vboard .row,#fab'))e.preventDefault()});
+document.addEventListener('contextmenu',e=>{if(e.target.closest('.board .row,.vboard .row,.mx .row,.lgw .row,#fab'))e.preventDefault()});
 let FBt=null;
 document.addEventListener('pointerdown',e=>{
   if(!e.target.closest('#fab'))return;
